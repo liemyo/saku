@@ -239,6 +239,10 @@ nav .ns{display:none}
   nav button{flex-direction:column;justify-content:center;gap:3px;padding:7px 2px;font-size:12px;border-radius:10px;white-space:nowrap}
   nav button svg{width:20px;height:20px}
 }
+.card-h select{font-size:14px;padding:4px 8px}
+.big-sum{display:flex;align-items:center;gap:18px;flex-wrap:wrap;width:100%;text-align:left;border:1px solid var(--line);background:var(--card2);border-radius:10px;padding:10px 14px;margin-bottom:6px;cursor:pointer}
+.big-sum:hover{border-color:var(--accent)}.big-sum .chev{margin-left:auto}
+.linkish{border:0;background:none;color:var(--accent);font-weight:600;cursor:pointer;padding:2px 4px}
 </style>
 </head>
 <body>
@@ -543,6 +547,9 @@ function periodReport(l, start, end, catKey) {
   const days = new Map(); for (const e of entries) { const k = +startOfDay(e.date); const t = days.get(k) || { date: startOfDay(e.date), out: 0, inc: 0, n: 0 }; if (e.kind === 'Pengeluaran') t.out += e.amount; else t.inc += e.amount; t.n++; days.set(k, t); }
   return { start, end, entries, expense, income, cats, incCats, days: [...days.values()] };
 }
+// Expenses strictly above a nominal threshold, largest first.
+const bigExpenses = (entries, min) => entries.filter(e => e.kind === 'Pengeluaran' && e.amount > min).sort((a, b) => b.amount - a.amount || Date.parse(a.date) - Date.parse(b.date));
+const BIG_STEPS = [400000, 500000, 600000, 700000, 800000, 900000, 1000000];
 function reportXLSX(l, rep, title, opts = { cats: true, tx: true }) {
   const range = `${dateText(rep.start)} – ${dateText(addDays(rep.end, -1))}`; const sheets = [];
   const sum = [[{ v: title, s: 6 }], ['Periode', range], [], [{ v: 'Pemasukan', s: 1 }, { v: rep.income, s: 3 }], [{ v: 'Pengeluaran', s: 1 }, { v: rep.expense, s: 3 }], [{ v: 'Selisih', s: 1 }, { v: rep.income - rep.expense, s: 3 }], [{ v: 'Jumlah transaksi', s: 1 }, rep.entries.length]];
@@ -553,6 +560,11 @@ function reportXLSX(l, rep, title, opts = { cats: true, tx: true }) {
     if (rep.incCats.length) { sum.push([], [{ v: 'Pemasukan per kategori', s: 1 }], [{ v: 'Kategori', s: 1 }, { v: 'Transaksi', s: 1 }, { v: 'Total', s: 1 }]); for (const c of rep.incCats) sum.push([c.name, c.count, { v: c.total, s: 2 }]); }
   }
   sheets.push({ name: 'Ringkasan', rows: sum, widths: [28, 22, 18, 10] });
+  if (opts.bigOn) { const big = bigExpenses(rep.entries, opts.min); const tot = big.reduce((a, e) => a + e.amount, 0);
+    sheets.push({ name: `Di atas ${compact(opts.min).replace(/ /g, '')}`, widths: [18, 40, 22, 16],
+      rows: [[{ v: `Pengeluaran di atas ${money(opts.min)}`, s: 1 }], [], [{ v: 'Tanggal', s: 1 }, { v: 'Catatan', s: 1 }, { v: 'Kategori', s: 1 }, { v: 'Pengeluaran', s: 1 }],
+        ...big.map(e => [new Date(e.date), e.note || '', e.category ? categoryName(l, e.category) : 'Tanpa kategori', { v: e.amount, s: 2 }]),
+        [{ v: `Total (${big.length} transaksi)`, s: 1 }, '', '', { v: tot, s: 3 }]] }); }
   if (opts.tx) {
     sheets.push({ name: 'Transaksi', widths: [18, 40, 22, 14, 16, 16], rows: [[{ v: 'Tanggal', s: 1 }, { v: 'Catatan', s: 1 }, { v: 'Kategori', s: 1 }, { v: 'Jenis', s: 1 }, { v: 'Pemasukan', s: 1 }, { v: 'Pengeluaran', s: 1 }],
       ...rep.entries.map(e => [new Date(e.date), e.note || '', e.category ? categoryName(l, e.category) : 'Tanpa kategori', e.kind, e.kind === 'Pemasukan' ? { v: e.amount, s: 2 } : '', e.kind === 'Pengeluaran' ? { v: e.amount, s: 2 } : '']),
@@ -631,6 +643,13 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
     if (rep.incCats.length) { need(60); d.text(M, y + 12, 'Pemasukan per kategori', 12.5, { bold: true }); y += 20;
       table([{ t: 'Kategori', w: flex(175) }, { t: 'Transaksi', w: 70, align: 'right' }, { t: 'Total', w: 105, align: 'right' }], rep.incCats.map(c => ({ cells: [c.name, String(c.count), money(c.total)] }))); y += 16; }
   }
+  if (opts.bigOn) {
+    const big = bigExpenses(rep.entries, opts.min); const tot = big.reduce((a, e) => a + e.amount, 0);
+    need(60); d.text(M, y + 12, `Pengeluaran di atas ${money(opts.min)}`, 12.5, { bold: true }); d.text(R, y + 12, `${big.length} transaksi · ${money(tot)}`, 9.5, { color: GRAY, align: 'right' }); y += 20;
+    table([{ t: 'Tanggal', w: 66 }, { t: 'Catatan', w: flex(66 + 115 + 95) }, { t: 'Kategori', w: 115 }, { t: 'Pengeluaran', w: 95, align: 'right' }],
+      [...big.map(e => ({ cells: [dateText(e.date), e.note || '', e.category ? categoryName(l, e.category) : '—', money(e.amount)] })), { bold: true, cells: ['Total', '', '', money(tot)] }]);
+    y += 16;
+  }
   if (opts.tx) {
     need(60); d.text(M, y + 12, 'Rincian transaksi', 12.5, { bold: true }); y += 20;
     table([{ t: 'Tanggal', w: 66 }, { t: 'Catatan', w: flex(66 + 105 + 80 + 80) }, { t: 'Kategori', w: 105 }, { t: 'Pemasukan', w: 80, align: 'right' }, { t: 'Pengeluaran', w: 80, align: 'right' }],
@@ -643,7 +662,7 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
 
 
 // Saku.yuk Web — UI
-const BUILD = '20261003-150603';
+const BUILD = '20261003-151630';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -682,9 +701,9 @@ const now = new Date();
 const ui = {
   section: 'Transaksi', day: startOfDay(now), msg: '', menu: null, locked: false,
   tx: { search: '', kind: 'Semua', wallet: '', limited: false, start: dateInput(monthStart(now)), end: dateInput(now), limit: 300 },
-  rep: { mode: ls.get('reportMode') || 'Bulanan', month: monthStart(now), start: dateInput(addMonths(monthStart(now), -5)), end: dateInput(now), wallet: '', selected: null },
+  rep: { mode: ls.get('reportMode') || 'Bulanan', month: monthStart(now), start: dateInput(addMonths(monthStart(now), -5)), end: dateInput(now), min: 400000, wallet: '', selected: null },
   wal: { id: null, name: '', opening: '0', negative: false }, cat: { id: null, name: '', income: false },
-  pr: { period: 'month', month: monthStart(now), start: dateInput(addDays(startOfDay(now), -6)), end: dateInput(now), cats: true, tx: true, cat: '' },
+  pr: { period: 'month', month: monthStart(now), start: dateInput(addDays(startOfDay(now), -6)), end: dateInput(now), cats: true, tx: true, cat: '', bigOn: false, min: 400000 },
   open: new Set(),
   pending: null
 };
@@ -802,6 +821,7 @@ function vReports() {
          <select data-a-change="rpreset" aria-label="Pilihan cepat"><option value="">Cepat…</option>${[['3', '3 bulan terakhir'], ['6', '6 bulan terakhir'], ['12', '12 bulan terakhir'], ['ty', 'Tahun ini'], ['ly', 'Tahun lalu'], ['all', 'Semua data']].map(([v, l]) => opt(v, l)).join('')}</select>`}</div>
     <div class="metrics">${metric('Pengeluaran', total, '↗', true, 'rep-out')}${metric('Pemasukan', income, '↙', false, 'rep-in')}${metric('Selisih', income - total, '=', false, 'rep-all')}</div>
     <div class="card" style="margin-top:18px">${categorySection(cats, total, title)}</div>
+    <div class="card" style="margin-top:18px">${bigSection(exps, total, title)}</div>
     ${r.mode === 'Bulanan' ? dailySection(entries, r.month) : ''}
     <div class="card" style="margin-top:18px">${monthSection(months, r.mode === 'Bulanan' ? r.month : null)}</div>
     <div class="card" style="margin-top:18px">${yearSection(years, (r.mode === 'Bulanan' ? r.month : s).getFullYear())}</div>`;
@@ -861,6 +881,15 @@ function yearSection(years, highlight) {
     + `<div class="tablewrap"><table class="months"><thead><tr><th>Tahun</th><th class="num">Pengeluaran</th><th class="num hide-sm">Transaksi</th><th class="num">Rata-rata/bulan</th><th class="num hide-sm">vs tahun lalu</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
     <p class="muted small">Rata-rata/bulan dihitung dari bulan yang ada pengeluarannya.</p>`;
 }
+const minOptions = cur => BIG_STEPS.map(v => opt(v, `> ${money(v)}`, Number(cur) === v)).join('');
+function bigSection(exps, total, title) {
+  const min = Number(ui.rep.min); const big = bigExpenses(exps, min); const sum = big.reduce((a, e) => a + e.amount, 0);
+  const rows = big.slice(0, 15).map(e => `<button class="drow" data-a="edit" data-id="${e.id}"><span class="dt" style="width:96px;white-space:nowrap">${dateText(e.date)}</span><span class="grow dn"><b>${esc(e.note || categoryName(L, e.category))}</b><small>${esc(e.category ? categoryName(L, e.category) : 'Tanpa kategori')}</small></span><span class="num red">− ${money(e.amount)}</span></button>`).join('');
+  return `<div class="card-h"><b>Pengeluaran di atas</b><select data-bind="rep.min" aria-label="Batas nominal">${minOptions(min)}</select><span class="muted">${esc(title)}</span></div>
+    ${big.length ? `<button class="big-sum" data-a="detail" data-what="big"><span><b>${big.length}</b> transaksi</span><span>Total <b class="red">${money(sum)}</b></span><span class="muted">${(sum / Math.max(1, total) * 100).toFixed(1).replace('.', ',')}% dari pengeluaran</span><span class="chev">›</span></button>${rows}
+      ${big.length > 15 ? `<button class="btn" style="margin-top:10px" data-a="detail" data-what="big">Lihat semua ${big.length} transaksi</button>` : ''}`
+      : `<p class="muted">Tidak ada pengeluaran di atas ${money(min)} pada periode ini.</p>`}`;
+}
 function dailySection(entries, month) {
   const days = new Map(); for (const e of entries) { const k = +startOfDay(e.date); const t = days.get(k) || { out: 0, inc: 0, n: 0 }; if (e.kind === 'Pengeluaran') t.out += e.amount; if (e.kind === 'Pemasukan') t.inc += e.amount; t.n++; days.set(k, t); }
   const end = Math.min(+addMonths(month, 1), +addDays(startOfDay(new Date()), 1)); const rows = [];
@@ -878,6 +907,8 @@ function detailFor(b) {
     case 'day-in': return { title: `Pemasukan · ${dayTitle(d0)}`, es: inRange(d0, d1).filter(x => x.kind === 'Pemasukan'), day: d0 };
     case 'rep-out': return { title: `Pengeluaran · ${R.title}`, es: R.entries.filter(x => x.kind === 'Pengeluaran') };
     case 'rep-in': return { title: `Pemasukan · ${R.title}`, es: R.entries.filter(x => x.kind === 'Pemasukan') };
+    case 'big': { const m = Number(ui.rep.min); return { title: `Di atas ${money(m)} · ${R.title}`, es: bigExpenses(R.entries, m) }; }
+    case 'pr-big': return { title: `Di atas ${money(ui.pr.min)} · ${printFullTitle()}`, es: bigExpenses(printReport().entries, Number(ui.pr.min)) };
     case 'rep-all': return { title: `Semua transaksi · ${R.title}`, es: R.entries };
     case 'cat': { const c = R.cats.find(x => x.key === b.dataset.k); return { title: `${c?.name ?? 'Kategori'} · ${R.title}`, es: R.entries.filter(x => x.kind === 'Pengeluaran' && Reports.key(x) === b.dataset.k) }; }
     case 'month': { const m = new Date(Number(b.dataset.m)); return { title: `Pengeluaran · ${monthName(m)}`, es: Reports.expenses(L, m, addMonths(m, 1)), month: m }; }
@@ -940,7 +971,8 @@ function vPrint() {
     <div class="card" style="margin-top:16px"><div class="card-h"><b>Isi laporan</b></div>
       <label class="row" style="gap:10px;margin-bottom:12px"><span class="bold">Kategori</span><select data-bind="pr.cat" aria-label="Kategori laporan" style="min-width:220px">${catOptions()}</select></label>
       <label class="chk"><input type="checkbox" data-bind="pr.cats" ${p.cats ? 'checked' : ''}> Ringkasan per kategori</label><br>
-      <label class="chk" style="margin-top:8px"><input type="checkbox" data-bind="pr.tx" ${p.tx ? 'checked' : ''}> Rincian semua transaksi</label>
+      <label class="chk" style="margin-top:8px"><input type="checkbox" data-bind="pr.tx" ${p.tx ? 'checked' : ''}> Rincian semua transaksi</label><br>
+      <span class="row" style="gap:8px;margin-top:8px"><label class="chk"><input type="checkbox" data-bind="pr.bigOn" ${p.bigOn ? 'checked' : ''}> Rincian di atas nominal</label><select data-bind="pr.min" aria-label="Batas nominal">${minOptions(p.min)}</select>${p.bigOn ? `<button class="linkish" data-a="detail" data-what="pr-big">${bigExpenses(r.entries, Number(p.min)).length} transaksi ›</button>` : ''}</span>
       <div class="row" style="margin-top:18px"><button class="btn primary big" data-a="prpdf" ${r.entries.length ? '' : 'disabled'}>⬇ Unduh PDF</button><button class="btn big" data-a="prxlsx" ${r.entries.length ? '' : 'disabled'}>⬇ Unduh Excel</button><button class="btn" data-a="prprint" ${r.entries.length ? '' : 'disabled'}>🖨 Cetak ke printer</button></div>
       ${r.entries.length ? '' : '<p class="muted">Tidak ada transaksi pada periode ini.</p>'}</div>
     ${r.cats.length ? `<div class="card" style="margin-top:16px"><div class="card-h"><b>Pratinjau per kategori</b></div>${r.cats.map(c => `<button class="catrow" data-a="detail" data-what="pr-cat" data-k="${c.key}"><div class="l"><span>${esc(c.name)}</span><span class="muted small">${c.count}×</span><span class="grow"></span><span class="num">${money(c.total)}</span><span class="chev">›</span></div></button>`).join('')}</div>` : ''}`;
@@ -949,9 +981,11 @@ function printHTML() {
   const p = ui.pr; const r = printReport(); const t = printFullTitle();
   const cats = p.cats ? `<h2>Pengeluaran per kategori</h2><table><thead><tr><th>Kategori</th><th class="n">Transaksi</th><th class="n">Total</th><th class="n">%</th></tr></thead><tbody>${r.cats.map(c => `<tr><td>${esc(c.name)}</td><td class="n">${c.count}</td><td class="n">${money(c.total)}</td><td class="n">${(c.total / Math.max(1, r.expense) * 100).toFixed(1).replace('.', ',')}%</td></tr>`).join('')}<tr class="tot"><td>Total</td><td class="n">${r.cats.reduce((a, c) => a + c.count, 0)}</td><td class="n">${money(r.expense)}</td><td class="n">100%</td></tr></tbody></table>
     ${r.incCats.length ? `<h2>Pemasukan per kategori</h2><table><tbody>${r.incCats.map(c => `<tr><td>${esc(c.name)}</td><td class="n">${c.count}</td><td class="n">${money(c.total)}</td></tr>`).join('')}</tbody></table>` : ''}` : '';
+  const bigList = p.bigOn ? bigExpenses(r.entries, Number(p.min)) : [];
+  const big = p.bigOn ? `<h2>Pengeluaran di atas ${money(Number(p.min))}</h2><table><thead><tr><th>Tanggal</th><th>Catatan</th><th>Kategori</th><th class="n">Pengeluaran</th></tr></thead><tbody>${bigList.map(e => `<tr><td class="nw">${dateText(e.date)}</td><td>${esc(e.note || '')}</td><td>${esc(e.category ? categoryName(L, e.category) : '—')}</td><td class="n">${money(e.amount)}</td></tr>`).join('')}<tr class="tot"><td colspan="3">Total (${bigList.length} transaksi)</td><td class="n">${money(bigList.reduce((a, e) => a + e.amount, 0))}</td></tr></tbody></table>` : '';
   const tx = p.tx ? `<h2>Rincian transaksi</h2><table><thead><tr><th>Tanggal</th><th>Catatan</th><th>Kategori</th><th class="n">Pemasukan</th><th class="n">Pengeluaran</th></tr></thead><tbody>${r.entries.map(e => `<tr><td class="nw">${dateText(e.date)}</td><td>${esc(e.note || '')}</td><td>${esc(e.category ? categoryName(L, e.category) : '—')}</td><td class="n">${e.kind === 'Pemasukan' ? money(e.amount) : ''}</td><td class="n">${e.kind === 'Pengeluaran' ? money(e.amount) : ''}</td></tr>`).join('')}<tr class="tot"><td colspan="3">Total</td><td class="n">${money(r.income)}</td><td class="n">${money(r.expense)}</td></tr></tbody></table>` : '';
   return `<h1>Laporan Keuangan</h1><div class="sub">${esc(USER)} · ${esc(t)} · dicetak ${dateText(new Date(), true)}</div>
-    <div class="tots"><div><span>Pemasukan</span><b>${money(r.income)}</b></div><div><span>Pengeluaran</span><b>${money(r.expense)}</b></div><div><span>Selisih</span><b>${money(r.income - r.expense)}</b></div><div><span>Transaksi</span><b>${r.entries.length}</b></div></div>${cats}${tx}`;
+    <div class="tots"><div><span>Pemasukan</span><b>${money(r.income)}</b></div><div><span>Pengeluaran</span><b>${money(r.expense)}</b></div><div><span>Selisih</span><b>${money(r.income - r.expense)}</b></div><div><span>Transaksi</span><b>${r.entries.length}</b></div></div>${cats}${big}${tx}`;
 }
 
 // ---------- settings ----------
@@ -1059,10 +1093,10 @@ const A = {
   rprev: () => { ui.rep.month = addMonths(ui.rep.month, -1); }, rnext: () => { ui.rep.month = addMonths(ui.rep.month, 1); }, rthis: () => { ui.rep.month = monthStart(new Date()); },
   detail: b => { ui.menu = null; showDetail(detailFor(b)); throw null; },
   prp: b => { ui.pr.period = b.dataset.v; },
-  prpdf: () => { const name = printFileName('pdf'); const bytes = reportPDF(L, printReport(), printFullTitle(), USER, ui.pr);
+  prpdf: () => { const name = printFileName('pdf'); const bytes = reportPDF(L, printReport(), printFullTitle(), USER, { ...ui.pr, min: Number(ui.pr.min) });
     download(name, bytes, 'application/pdf'); ui.msg = `File PDF "${name}" diunduh (cek folder Unduhan / Downloads).`; },
   prprint: () => { $('#print-area').innerHTML = printHTML(); window.print(); throw null; },
-  prxlsx: () => { download(printFileName('xlsx'), reportXLSX(L, printReport(), `Laporan Keuangan ${USER} — ${printFullTitle()}`, ui.pr), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); ui.msg = 'File Excel diunduh.'; },
+  prxlsx: () => { download(printFileName('xlsx'), reportXLSX(L, printReport(), `Laporan Keuangan ${USER} — ${printFullTitle()}`, { ...ui.pr, min: Number(ui.pr.min) }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); ui.msg = 'File Excel diunduh.'; },
   pinset: async () => { const a = $('#pin1').value, b = $('#pin2').value; if (!/^\d{6,12}$/.test(a)) fail('PIN harus 6–12 angka.'); if (a !== b) fail('Konfirmasi PIN tidak sama.');
     const salt = uuid(); ls.set('pin', JSON.stringify({ salt, hash: await hashPin(a, salt) })); ui.msg = 'PIN tersimpan di browser ini.'; },
   pinoff: () => { ls.del('pin'); ui.msg = 'PIN dinonaktifkan.'; },
