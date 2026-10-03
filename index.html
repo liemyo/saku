@@ -685,7 +685,7 @@ function merge3(base, a, b) {
 
 
 // Saku.yuk Web — UI
-const BUILD = '20261003-170232';
+const BUILD = '20261003-170624';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -1219,7 +1219,10 @@ const Sync = { busy: false, again: false, at: null, err: '', rev: null, ch: null
 function syncCfg() { return !!(SB_URL && SB_KEY); }
 function showSync() { document.querySelectorAll('.save-state').forEach(el => { el.textContent = saveText(); }); }
 function syncSoon() { if (!syncCfg()) return; clearTimeout(Sync.timer); Sync.timer = setTimeout(syncNow, 300); showSync(); }
-async function rpc(fn, args) {
+async function rpc(fn, args) { // retries: some networks drop connections (flaky IPv6/NAT64)
+  for (let i = 0; ; i++) { try { return await rpcOnce(fn, args); } catch (e) { if (i >= 4 || /^server/.test(e.message)) throw e; await new Promise(r => setTimeout(r, 250 * (i + 1))); } }
+}
+async function rpcOnce(fn, args) {
   const r = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, { method: 'POST', cache: 'no-store', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
   if (!r.ok) throw new Error(navigator.onLine ? 'server ' + r.status : 'offline'); return r.json();
 }
