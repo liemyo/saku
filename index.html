@@ -220,6 +220,15 @@ dialog.wide:not([open]){display:none}
 .mask-wrap input::placeholder{-webkit-text-fill-color:rgba(255,255,255,.6);color:rgba(255,255,255,.6);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif!important;letter-spacing:0}
 .mask-wrap input::selection{background:rgba(79,209,165,.35)}
 #user-mask{position:absolute;inset:0;pointer-events:none;color:#fff;white-space:pre;overflow:hidden}
+details.sect{padding:0;overflow:hidden;margin-bottom:12px}
+details.sect>summary{list-style:none;display:flex;align-items:center;gap:12px;padding:15px 18px;cursor:pointer;font-weight:600;font-size:15.5px;user-select:none}
+details.sect>summary::-webkit-details-marker{display:none}
+details.sect>summary:hover{background:var(--accent-soft)}
+details.sect .sic{width:24px;text-align:center}
+details.sect .chev-d{color:var(--muted);font-size:20px;transition:transform .15s}
+details.sect[open] .chev-d{transform:rotate(90deg)}
+details.sect[open]>summary{border-bottom:1px solid var(--line)}
+details.sect .gbody{padding:14px 18px 16px}
 </style>
 </head>
 <body>
@@ -660,6 +669,7 @@ const ui = {
   rep: { mode: ls.get('reportMode') || 'Bulanan', month: monthStart(now), start: dateInput(addMonths(monthStart(now), -5)), end: dateInput(now), wallet: '', selected: null },
   wal: { id: null, name: '', opening: '0', negative: false }, cat: { id: null, name: '', income: false },
   pr: { period: 'month', month: monthStart(now), start: dateInput(addDays(startOfDay(now), -6)), end: dateInput(now), cats: true, tx: true },
+  open: new Set(),
   pending: null
 };
 
@@ -918,23 +928,25 @@ function printHTML() {
 }
 
 // ---------- settings ----------
+// Collapsible settings sections; open state survives re-renders.
+const sect = (t, ic, body) => `<details class="group sect" data-g="${esc(t)}"${ui.open.has(t) ? ' open' : ''}><summary><span class="sic">${ic}</span><span class="grow">${esc(t)}</span><span class="chev-d">›</span></summary><div class="gbody">${body}</div></details>`;
 function vSettings() {
   const app = ls.get('appearance') || 'Sistem'; const last = Number(ls.get('lastMail') || 0);
-  return `<div class="group"><div class="t">Kategori</div>${vCategories()}</div>
-    <div class="group"><div class="t">Tampilan</div><select data-a-change="theme" aria-label="Tampilan">${['Sistem', 'Terang', 'Gelap'].map(t => opt(t, t, app === t)).join('')}</select></div>
-    <div class="group"><div class="t">Keamanan</div><p style="margin:0 0 10px">${ls.get('pin') ? 'PIN aktif. Halaman terkunci saat dibuka dan saat tab disembunyikan.' : 'PIN belum diaktifkan.'}</p>
+  return `${sect('Kategori', '🏷', `${vCategories()}`)}
+    ${sect('Tampilan', '🎨', `<select data-a-change="theme" aria-label="Tampilan">${['Sistem', 'Terang', 'Gelap'].map(t => opt(t, t, app === t)).join('')}</select>`)}
+    ${sect('Keamanan', '🔒', `<p style="margin:0 0 10px">${ls.get('pin') ? 'PIN aktif. Halaman terkunci saat dibuka dan saat tab disembunyikan.' : 'PIN belum diaktifkan.'}</p>
       <div class="row"><input type="password" id="pin1" inputmode="numeric" placeholder="PIN baru (6–12 angka)" class="grow"><input type="password" id="pin2" inputmode="numeric" placeholder="Ulangi PIN" class="grow"><button class="btn" data-a="pinset">Aktifkan / ubah PIN</button>${ls.get('pin') ? '<button class="btn" data-a="pinoff">Nonaktifkan</button>' : ''}</div>
-      <p class="muted small">PIN hanya mengunci tampilan di browser ini; data tidak dienkripsi. Touch ID hanya tersedia di aplikasi Mac.</p></div>
-    <div class="group"><div class="t">Backup lokal & ekspor</div>
+      <p class="muted small">PIN hanya mengunci tampilan di browser ini; data tidak dienkripsi. Touch ID hanya tersedia di aplikasi Mac.</p>`)}
+    ${sect('Backup lokal & ekspor', '💾', `
       <div class="row"><button class="btn" data-a="bsave">Simpan backup lengkap</button><button class="btn" data-a="bopen">Pulihkan backup…</button><button class="btn" data-a="csvall">Ekspor semua CSV</button></div>
       <div class="row" style="margin-top:10px"><button class="btn" data-a="csvopen">Impor CSV SakuMac…</button><button class="btn" data-a="xlsxopen">Impor Excel Sepran…</button>${hasServer ? '<button class="btn" data-a="server">Samakan dengan data server</button>' : ''}</div>
-      <p class="muted small">Format backup sama dengan aplikasi SakuMac di Mac.</p></div>
-    <div class="group"><div class="t">Backup ke Gmail</div><p class="muted" style="margin:0 0 10px">Kirim berkas backup lengkap ke alamat Gmail Anda.</p>
+      <p class="muted small">Format backup sama dengan aplikasi SakuMac di Mac.</p>`)}
+    ${sect('Backup ke Gmail', '✉️', `<p class="muted" style="margin:0 0 10px">Kirim berkas backup lengkap ke alamat Gmail Anda.</p>
       <div class="row"><input type="text" id="gmail" placeholder="Alamat Gmail Anda" value="${esc(ls.get('gmail') || '')}" style="width:300px"><button class="btn primary" data-a="mail">Kirim backup ke Gmail</button></div>
       <label class="chk" style="margin-top:10px"><input type="checkbox" data-a-change="weekly" ${ls.get('weeklyMail') === '1' ? 'checked' : ''}> Ingatkan saya mengirim backup ke Gmail setiap minggu</label>
       ${last ? `<p class="muted small">Backup email terakhir disiapkan: ${dateText(last, true)}</p>` : ''}
-      <p class="muted small">Safari: pilih Mail/Gmail di menu Bagikan. Browser lain: berkas diunduh dan Gmail terbuka — lampirkan berkasnya lalu kirim.</p></div>
-    <div class="group"><div class="t">Tentang data</div><p style="margin:0">Pengguna <b>${esc(USER)}</b> · ${L.entries.length} transaksi · tersimpan di browser ini. Perangkat lain punya salinan sendiri — pindahkan dengan backup.</p></div>
+      <p class="muted small">Safari: pilih Mail/Gmail di menu Bagikan. Browser lain: berkas diunduh dan Gmail terbuka — lampirkan berkasnya lalu kirim.</p>`)}
+    ${sect('Tentang data', 'ℹ️', `<p style="margin:0">Pengguna <b>${esc(USER)}</b> · ${L.entries.length} transaksi · tersimpan di browser ini. Perangkat lain punya salinan sendiri — pindahkan dengan backup.</p>`)}
     <p class="muted small">SakuMac Web • versi web dari aplikasi SakuMac • Bukan produk resmi Sepran</p>`;
 }
 function gateView() {
@@ -1080,6 +1092,7 @@ function bind(el) {
 }
 document.addEventListener('submit', ev => { if (ev.target.id !== 'gate-form') return; ev.preventDefault(); const btn = ev.target.querySelector('button'); const v = $('#user-in').value; btn.disabled = true; btn.textContent = 'Membuka…';
   login(v).then(render, e => { USER = null; L = null; btn.disabled = false; btn.textContent = 'Masuk'; $('#gate-err').textContent = e.message; }); });
+document.addEventListener('toggle', ev => { const g = ev.target.dataset?.g; if (!g) return; if (ev.target.open) ui.open.add(g); else ui.open.delete(g); }, true);
 let touch = null;
 document.addEventListener('touchstart', ev => { touch = ui.section === 'Transaksi' && ev.target.closest('#view') ? [ev.touches[0].clientX, ev.touches[0].clientY] : null; }, { passive: true });
 document.addEventListener('touchend', ev => { if (!touch) return; const dx = ev.changedTouches[0].clientX - touch[0], dy = ev.changedTouches[0].clientY - touch[1]; touch = null;
