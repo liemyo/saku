@@ -660,9 +660,25 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
   return d.build();
 }
 
+// Three-way merge for sync: base = last synced copy, a = this device, b = server. Per item (by id) the side
+// that changed since base wins; if both changed, this device wins. Without a base: server wins, local-only items kept.
+function merge3(base, a, b) {
+  const s = JSON.stringify, out = { ...b };
+  for (const k of Object.keys(a)) if (!Array.isArray(a[k]) && (!base || s(a[k]) !== s(base[k]))) out[k] = a[k];
+  for (const k of ['wallets', 'categories', 'entries', 'debts']) {
+    const m = arr => new Map((arr || []).map(x => [x.id, x])); const B = base && m(base[k]), A = m(a[k]), R = m(b[k]); const res = [];
+    for (const id of new Set([...R.keys(), ...A.keys()])) {
+      const x = A.get(id), y = R.get(id); const v = !B ? (y ?? x) : s(x) === s(B.get(id)) ? y : x;
+      if (v) res.push(v);
+    }
+    out[k] = res;
+  }
+  return out;
+}
+
 
 // Saku.yuk Web — UI
-const BUILD = '20261003-162446';
+const BUILD = '20261003-163032';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -711,10 +727,11 @@ const ui = {
 // ---------- storage ----------
 let savedAt = null;
 function persist() { if (!ls.set(KEY, JSON.stringify(L))) { savedAt = null; ui.msg = 'Gagal menyimpan di browser (penyimpanan penuh/diblokir). Segera simpan backup.'; return; } savedAt = new Date(); try { navigator.storage?.persist?.(); } catch {} }
-const saveText = () => savedAt ? '✓ Tersimpan otomatis ' + [savedAt.getHours(), savedAt.getMinutes(), savedAt.getSeconds()].map(n => String(n).padStart(2, '0')).join(':') : '💾 Tersimpan otomatis di browser ini';
+const hms = d => [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':');
+const saveText = () => USER && syncCfg() ? (Sync.err ? '⚠ Sinkron gagal: ' + Sync.err : Sync.busy || Sync.again ? '⏳ Menyinkronkan…' : Sync.at ? '☁ Tersinkron ' + hms(Sync.at) : '☁ Sinkron aktif') : savedAt ? '✓ Tersimpan otomatis ' + [savedAt.getHours(), savedAt.getMinutes(), savedAt.getSeconds()].map(n => String(n).padStart(2, '0')).join(':') : '💾 Tersimpan otomatis di browser ini';
 function commit(c) {
   if (loadFailed) fail('Data lama gagal dibuka. Pulihkan backup sebelum mengubah data.');
-  validate(c); const old = ls.get(KEY); if (old) ls.set(PREV, old); L = c; persist();
+  validate(c); const old = ls.get(KEY); if (old) ls.set(PREV, old); L = c; persist(); syncSoon();
 }
 function restore(l) { validate(l); loadFailed = false; commit(l); }
 // Encrypted server copy for this user (data/<id>.json); null when the user has none.
@@ -735,6 +752,7 @@ async function login(raw) {
   else if (server) { L = server; persist(); ui.msg = `Selamat datang, ${name}. Data dimuat: ${L.entries.length} transaksi, ${L.wallets.length} dompet.`; }
   else { L = defaultLedger(); persist(); ui.msg = `Buku catatan baru dibuat untuk "${name}". Klik Tambah untuk mencatat transaksi pertama.`; }
   ui.locked = !!pinRec(); if (!ui.locked) reminder();
+  Sync.etag = null; Sync.at = null; Sync.err = ''; if (syncCfg()) setTimeout(syncNow, 0);
 }
 function logout() { USER = null; L = null; ui.locked = false; ui.menu = null; ui.msg = ''; ui.tx.search = ''; if (dlg().open) dlg().close(); }
 function reminder() {
@@ -754,7 +772,7 @@ function render() {
     <aside>
       <div class="brand">${LOGO}<div><b>Saku.yuk</b><small>Catatan keuangan pribadi</small></div></div>
       <nav>${SECTIONS.map(([s, i]) => `<button data-a="nav" data-s="${s}" class="${ui.section === s ? 'on' : ''}">${icon(i)}<span class="nl">${s}</span><span class="ns">${s === 'Backup & pengaturan' ? 'Pengaturan' : s}</span></button>`).join('')}</nav>
-      <div class="side-foot"><div class="user-chip"><span class="avatar">${esc(USER[0].toUpperCase())}</span><span class="grow">${esc(USER)}</span><button class="icon-btn" data-a="logout" title="Keluar">Keluar</button></div><div style="margin-top:8px" id="save-state">${saveText()}</div></div>
+      <div class="side-foot"><div class="user-chip"><span class="avatar">${esc(USER[0].toUpperCase())}</span><span class="grow">${esc(USER)}</span><button class="icon-btn" data-a="logout" title="Keluar">Keluar</button></div><div style="margin-top:8px" class="save-state">${saveText()}</div></div>
     </aside>
     <main>
       <div class="top"><div><h1><span class="nl">${esc(ui.section)}</span><span class="ns">${ui.section === 'Backup & pengaturan' ? 'Pengaturan' : esc(ui.section)}</span></h1></div><div class="sp"></div>
@@ -792,7 +810,7 @@ function vTransactions() {
     <div class="metrics two">${metric('Pengeluaran', out, '↗', true, 'day-out')}${metric('Pemasukan', inc, '↙', false, 'day-in')}</div>
     <div class="card" style="margin-top:18px">${es.length ? es.map(e => entryRow(e, true)).join('') : '<div class="empty"><b>Belum ada transaksi</b>Tidak ada catatan pada hari ini.</div>'}
       <button class="btn primary add-day" data-a="new">＋ Tambah transaksi di hari ini</button></div>
-    <p class="muted small" style="text-align:center">Geser kiri/kanan atau tombol ‹ › untuk berpindah hari.</p>`;
+    <p class="muted small" style="text-align:center">Geser kiri/kanan atau tombol ‹ › untuk berpindah hari.<br><span class="save-state">${saveText()}</span></p>`;
 }
 function vCategories() {
   const c = ui.cat;
@@ -1000,6 +1018,11 @@ function vSettings() {
     ${sect('Keamanan', '🔒', `<p style="margin:0 0 10px">${pinRec() ? 'PIN aktif. Halaman terkunci saat dibuka dan saat tab disembunyikan.' : 'PIN belum diaktifkan.'}</p>
       ${USER === OWNER ? '<p class="muted small" style="margin:0">PIN akun ini tetap dan berlaku di semua perangkat.</p>' : `<div class="row"><input type="password" id="pin1" inputmode="numeric" placeholder="PIN baru (6–12 angka)" class="grow"><input type="password" id="pin2" inputmode="numeric" placeholder="Ulangi PIN" class="grow"><button class="btn" data-a="pinset">Aktifkan / ubah PIN</button>${pinRec() ? '<button class="btn" data-a="pinoff">Nonaktifkan</button>' : ''}</div>`}
       <p class="muted small">PIN hanya mengunci tampilan di browser ini; data tidak dienkripsi. Touch ID hanya tersedia di aplikasi Mac.</p>`)}
+    ${sect('Sinkron antar perangkat', '☁️', syncCfg() ? `<p style="margin:0 0 10px"><b>Aktif.</b> Data akun ini tersinkron otomatis lewat GitHub <b>${SYNC_REPO}</b> (cabang ${SYNC_BRANCH}, terenkripsi). <span class="save-state">${saveText()}</span></p>
+      <div class="row"><button class="btn primary" data-a="syncnow">Sinkronkan sekarang</button><button class="btn" data-a="syncoff">Putuskan di perangkat ini</button></div>`
+      : `<p style="margin:0 0 10px">Hubungkan perangkat ini supaya transaksi dari HP, laptop, dan browser lain tersinkron otomatis (±15 detik).</p>
+      <ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Buka <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → token baru (fine-grained)</a>.</li><li>Repository access: <b>Only select repositories</b> → <b>${SYNC_REPO.split('/')[1]}</b>.</li><li>Permissions → Repository → <b>Contents: Read and write</b>. Generate, lalu salin token.</li><li>Tempel token di bawah. Pakai token yang sama di setiap perangkat.</li></ol>
+      <div class="row"><input type="password" id="sync-token" placeholder="Token GitHub (github_pat_…)" class="grow" autocomplete="off"><button class="btn primary" data-a="syncon">Hubungkan</button></div>`)}
     ${sect('Backup lokal & ekspor', '💾', `
       <div class="row"><button class="btn" data-a="bsave">Simpan backup lengkap</button><button class="btn" data-a="bopen">Pulihkan backup…</button><button class="btn" data-a="csvall">Ekspor semua CSV</button></div>
       <div class="row" style="margin-top:10px"><button class="btn" data-a="csvopen">Impor CSV Saku.yuk…</button><button class="btn" data-a="xlsxopen">Impor Excel Sepran…</button>${hasServer ? '<button class="btn" data-a="server">Samakan dengan data server</button>' : ''}</div>
@@ -1009,7 +1032,7 @@ function vSettings() {
       <label class="chk" style="margin-top:10px"><input type="checkbox" data-a-change="weekly" ${ls.get('weeklyMail') === '1' ? 'checked' : ''}> Ingatkan saya mengirim backup ke Gmail setiap minggu</label>
       ${last ? `<p class="muted small">Backup email terakhir disiapkan: ${dateText(last, true)}</p>` : ''}
       <p class="muted small">Safari: pilih Mail/Gmail di menu Bagikan. Browser lain: berkas diunduh dan Gmail terbuka — lampirkan berkasnya lalu kirim.</p>`)}
-    ${sect('Tentang data', 'ℹ️', `<p style="margin:0">Pengguna <b>${esc(USER)}</b> · ${L.entries.length} transaksi · tersimpan di browser ini. Perangkat lain punya salinan sendiri — pindahkan dengan backup.</p>`)}
+    ${sect('Tentang data', 'ℹ️', `<p style="margin:0">Pengguna <b>${esc(USER)}</b> · ${L.entries.length} transaksi · ${syncCfg() ? 'tersimpan di browser ini dan tersinkron ke GitHub.' : 'tersimpan di browser ini. Aktifkan Sinkron antar perangkat agar HP/laptop lain ikut ter-update.'}</p>`)}
     <p class="muted small">Saku.yuk Web • versi ${BUILD} • Bukan produk resmi Sepran</p>`;
 }
 function gateView() {
@@ -1080,7 +1103,13 @@ function pickFile(accept, handler) { const i = document.createElement('input'); 
 // ---------- actions ----------
 const A = {
   nav: b => { ui.section = b.dataset.s; ui.menu = null; window.scrollTo(0, 0); },
-  msgx: () => { ui.msg = ''; }, new: () => entryDialog(null), more: () => { ui.tx.limit += 300; },
+  msgx: () => { ui.msg = ''; },
+  syncon: async () => { const t = $('#sync-token').value.trim(); if (!t) fail('Tempel token GitHub dulu.');
+    const r = await fetch(`https://api.github.com/repos/${SYNC_REPO}`, { cache: 'no-store', headers: { Authorization: 'Bearer ' + t, Accept: 'application/vnd.github+json' } });
+    if (!r.ok) fail(r.status === 401 ? 'Token tidak valid atau kedaluwarsa.' : r.status === 404 ? `Token belum diberi akses ke repo ${SYNC_REPO}.` : 'GitHub menolak: ' + r.status);
+    ls.set('sync', JSON.stringify({ token: t })); Sync.etag = null; Sync.err = ''; ui.msg = 'Sinkron diaktifkan. Menyamakan data…'; await syncNow(); if (!Sync.err) ui.msg = 'Sinkron aktif. Data perangkat ini sudah sama dengan server.'; },
+  syncoff: () => { ls.del('sync'); ls.del('syncbase'); Sync.etag = null; Sync.at = null; Sync.err = ''; ui.msg = 'Sinkron diputus di perangkat ini. Data lokal tetap ada.'; },
+  syncnow: async () => { Sync.etag = null; await syncNow(); ui.msg = Sync.err ? '' : 'Sudah tersinkron.'; }, new: () => entryDialog(null), more: () => { ui.tx.limit += 300; },
   lock: () => { ui.locked = true; },
   menu: b => { ui.menu = ui.menu === b.dataset.id ? null : b.dataset.id; },
   edit: b => { ui.menu = null; entryDialog(L.entries.find(e => e.id === b.dataset.id)); },
@@ -1185,6 +1214,61 @@ window.addEventListener('storage', ev => {
   if (!USER || ev.key !== lk(KEY) || !ev.newValue) return;
   try { const l = JSON.parse(ev.newValue); validate(l); L = l; savedAt = new Date(); if (!ui.locked && !dlg().open) render(); } catch {}
 });
+// ---------- sync between devices (private GitHub repo, one encrypted file per user) ----------
+const SYNC_REPO = 'liemyo/saku', SYNC_BRANCH = 'sync'; // own branch so saves don't rebuild GitHub Pages (main)
+const Sync = { busy: false, again: false, at: null, err: '', etag: null, timer: null };
+function syncCfg() { try { return JSON.parse(ls.get('sync') || 'null'); } catch { return null; } }
+function showSync() { document.querySelectorAll('.save-state').forEach(el => { el.textContent = saveText(); }); }
+function syncSoon() { if (!syncCfg()) return; clearTimeout(Sync.timer); Sync.timer = setTimeout(syncNow, 800); showSync(); }
+async function syncApi(user, method, body, extra = {}) {
+  const path = `https://api.github.com/repos/${SYNC_REPO}/contents/sync/${await Users.fileId(user)}.json` + (method === 'GET' ? '?ref=' + SYNC_BRANCH : '');
+  if (body) body.branch = SYNC_BRANCH;
+  return fetch(path, { method, cache: 'no-store', headers: { Authorization: 'Bearer ' + syncCfg().token, Accept: 'application/vnd.github+json', ...extra }, body: body && JSON.stringify(body) });
+}
+async function syncBranch() {
+  const h = { Authorization: 'Bearer ' + syncCfg().token, Accept: 'application/vnd.github+json' }, api = `https://api.github.com/repos/${SYNC_REPO}/git`;
+  if ((await fetch(`${api}/ref/heads/${SYNC_BRANCH}`, { cache: 'no-store', headers: h })).ok) return;
+  const main = await fetch(`${api}/ref/heads/main`, { cache: 'no-store', headers: h }); if (!main.ok) throw new Error(syncErr(main.status));
+  const c = await fetch(`${api}/refs`, { method: 'POST', headers: h, body: JSON.stringify({ ref: 'refs/heads/' + SYNC_BRANCH, sha: (await main.json()).object.sha }) });
+  if (!c.ok && c.status !== 422) throw new Error(syncErr(c.status));
+}
+const syncErr = st => st === 401 ? 'token tidak valid/kedaluwarsa' : st === 403 || st === 404 ? 'token tanpa akses ke repo' : 'GitHub ' + st;
+async function syncNow() {
+  if (!USER || !L || loadFailed || !syncCfg()) return;
+  if (Sync.busy) { Sync.again = true; return; }
+  const user = USER; Sync.busy = true; showSync(); let changed = false;
+  try {
+    for (let tries = 0; tries < 4; tries++) {
+      const dirty = JSON.stringify(L) !== ls.get('syncbase');
+      const r = await syncApi(user, 'GET', null, Sync.etag && !dirty ? { 'If-None-Match': Sync.etag } : {});
+      if (r.status === 304) break;
+      let remote = null, sha;
+      if (r.ok) { const j = await r.json(); sha = j.sha; Sync.etag = r.headers.get('ETag');
+        remote = JSON.parse(await Users.decrypt(user, atob(j.content.replace(/\s/g, '')))); validate(remote); }
+      else if (r.status === 404) await syncBranch(); else throw new Error(syncErr(r.status));
+      if (USER !== user) return;
+      let base = null; try { base = JSON.parse(ls.get('syncbase') || 'null'); } catch {}
+      if (!base) try { base = await serverLedger(true); } catch {}
+      let merged = remote ? merge3(base, L, remote) : L; try { validate(merged); } catch { merged = L; }
+      const text = JSON.stringify(merged);
+      if (text !== JSON.stringify(L)) { L = merged; persist(); changed = true; }
+      if (!remote || text !== JSON.stringify(remote)) {
+        const put = await syncApi(user, 'PUT', { message: `Saku.yuk ${user} ${new Date().toISOString()}`, content: btoa(await Users.encrypt(user, text)), ...(sha ? { sha } : {}) }, { 'Content-Type': 'application/json' });
+        if (put.status === 409 || put.status === 422) { Sync.etag = null; continue; }
+        if (!put.ok) throw new Error(syncErr(put.status));
+        Sync.etag = null;
+      }
+      ls.set('syncbase', text); break;
+    }
+    Sync.at = new Date(); Sync.err = '';
+  } catch (e) { Sync.err = e?.message || String(e); }
+  finally { Sync.busy = false; }
+  if (Sync.again) { Sync.again = false; return syncNow(); }
+  if (changed && USER === user && !ui.locked && !dlg().open) render(); else showSync();
+}
+setInterval(() => { if (!document.hidden) syncNow(); }, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
+window.addEventListener('online', () => syncNow());
 boot();
 </script>
 </body>
