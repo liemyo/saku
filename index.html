@@ -536,8 +536,8 @@ const XLSX = {
   }
 };
 // Period report used by "Cetak" (PDF + Excel).
-function periodReport(l, start, end) {
-  const entries = l.entries.filter(e => { const d = new Date(e.date); return d >= start && d < end && e.kind !== 'Transfer'; }).sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+function periodReport(l, start, end, catKey) {
+  const entries = l.entries.filter(e => { const d = new Date(e.date); return d >= start && d < end && e.kind !== 'Transfer' && (!catKey || (e.category ?? 'none') === catKey); }).sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
   const expense = entries.filter(e => e.kind === 'Pengeluaran').reduce((a, e) => a + e.amount, 0), income = entries.filter(e => e.kind === 'Pemasukan').reduce((a, e) => a + e.amount, 0);
   const cats = Reports.byCategory(l, entries.filter(e => e.kind === 'Pengeluaran')); const incCats = Reports.byCategory(l, entries.filter(e => e.kind === 'Pemasukan'));
   const days = new Map(); for (const e of entries) { const k = +startOfDay(e.date); const t = days.get(k) || { date: startOfDay(e.date), out: 0, inc: 0, n: 0 }; if (e.kind === 'Pengeluaran') t.out += e.amount; else t.inc += e.amount; t.n++; days.set(k, t); }
@@ -605,7 +605,7 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
   let y = M;
   const range = `${dateText(rep.start)} – ${dateText(addDays(rep.end, -1))}`;
   d.text(M, y + 18, 'Laporan Keuangan', 20, { bold: true }); y += 28;
-  d.text(M, y + 10, `${user} · ${title} (${range}) · dicetak ${dateText(new Date(), true)}`, 9.5, { color: GRAY }); y += 24;
+  d.text(M, y + 10, `${user} · ${title.includes(range) ? title : `${title} (${range})`} · dicetak ${dateText(new Date(), true)}`, 9.5, { color: GRAY }); y += 24;
   const boxes = [['Pemasukan', money(rep.income), ACC], ['Pengeluaran', money(rep.expense), RED], ['Selisih', money(rep.income - rep.expense), [0, 0, 0]], ['Transaksi', String(rep.entries.length), [0, 0, 0]]];
   const bw = (R - M - 3 * 8) / 4;
   boxes.forEach(([k, v, c], i) => { const x = M + i * (bw + 8); d.box(x, y, bw, 44, LINE); d.text(x + 8, y + 15, k, 8.5, { color: GRAY }); d.text(x + 8, y + 34, PDF.fit(v, 12.5, bw - 14, true), 12.5, { bold: true, color: c }); });
@@ -643,7 +643,7 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
 
 
 // Saku.yuk Web — UI
-const BUILD = '20261003-144458';
+const BUILD = '20261003-150603';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -684,7 +684,7 @@ const ui = {
   tx: { search: '', kind: 'Semua', wallet: '', limited: false, start: dateInput(monthStart(now)), end: dateInput(now), limit: 300 },
   rep: { mode: ls.get('reportMode') || 'Bulanan', month: monthStart(now), start: dateInput(addMonths(monthStart(now), -5)), end: dateInput(now), wallet: '', selected: null },
   wal: { id: null, name: '', opening: '0', negative: false }, cat: { id: null, name: '', income: false },
-  pr: { period: 'month', month: monthStart(now), start: dateInput(addDays(startOfDay(now), -6)), end: dateInput(now), cats: true, tx: true },
+  pr: { period: 'month', month: monthStart(now), start: dateInput(addDays(startOfDay(now), -6)), end: dateInput(now), cats: true, tx: true, cat: '' },
   open: new Set(),
   pending: null
 };
@@ -883,7 +883,7 @@ function detailFor(b) {
     case 'month': { const m = new Date(Number(b.dataset.m)); return { title: `Pengeluaran · ${monthName(m)}`, es: Reports.expenses(L, m, addMonths(m, 1)), month: m }; }
     case 'year': { const y = Number(b.dataset.y); return { title: `Pengeluaran · Tahun ${y}`, es: Reports.expenses(L, new Date(y, 0, 1), new Date(y + 1, 0, 1)) }; }
     case 'day': { const d = new Date(Number(b.dataset.d)); return { title: dayTitle(d), es: inRange(d, addDays(d, 1)), day: d }; }
-    case 'pr-all': return { title: `Transaksi · ${printTitle()}`, es: printReport().entries };
+    case 'pr-all': return { title: `Transaksi · ${printFullTitle()}`, es: printReport().entries };
     case 'pr-cat': { const r = printReport(); return { title: `${r.cats.find(x => x.key === b.dataset.k)?.name ?? 'Kategori'} · ${printTitle()}`, es: r.entries.filter(x => x.kind === 'Pengeluaran' && Reports.key(x) === b.dataset.k) }; }
   }
 }
@@ -915,8 +915,18 @@ function printBounds() {
   if (p.period === 'pick') return [p.month, addMonths(p.month, 1)];
   let a = startOfDay(fromDateInput(p.start)), b = startOfDay(fromDateInput(p.end)); if (a > b) [a, b] = [b, a]; return [a, addDays(b, 1)];
 }
-const printReport = () => { const [s, e] = printBounds(); return periodReport(L, s, e); };
+const printReport = () => { const [s, e] = printBounds(); return periodReport(L, s, e, ui.pr.cat || null); };
+const printCatName = () => !ui.pr.cat ? '' : ui.pr.cat === 'none' ? 'Tanpa kategori' : categoryName(L, ui.pr.cat);
+const printFullTitle = () => printTitle() + (ui.pr.cat ? ` · ${printCatName()}` : '');
+const printFileName = ext => { const [s] = printBounds(); const c = ui.pr.cat ? '-' + printCatName().replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') : ''; return `Laporan-${USER}-${ymd(s)}${c}.${ext}`; };
 function printTitle() { const p = ui.pr; const [s, e] = printBounds(); return p.period === 'month' || p.period === 'pick' ? monthName(s) : `${dateText(s)} – ${dateText(addDays(e, -1))}`; }
+function catOptions() {
+  const [s, e] = printBounds(); const counts = new Map(); for (const x of periodReport(L, s, e).entries) { const k = x.category ?? 'none'; counts.set(k, (counts.get(k) || 0) + 1); }
+  if (ui.pr.cat && !counts.has(ui.pr.cat)) counts.set(ui.pr.cat, 0);
+  const name = k => k === 'none' ? 'Tanpa kategori' : categoryName(L, k);
+  const list = [...counts.entries()].sort((a, b) => b[1] - a[1] || name(a[0]).localeCompare(name(b[0])));
+  return opt('', 'Semua kategori', !ui.pr.cat) + list.map(([k, n]) => opt(k, `${name(k)} (${n})`, ui.pr.cat === k)).join('');
+}
 function vPrint() {
   const p = ui.pr; const r = printReport(); const years = []; const first = L.entries.reduce((m, e) => Math.min(m, new Date(e.date).getFullYear()), new Date().getFullYear());
   for (let y = new Date().getFullYear(); y >= first; y--) years.push(y);
@@ -925,9 +935,10 @@ function vPrint() {
       <div class="chips">${periods.map(([v, l]) => `<button class="chip ${p.period === v ? 'on' : ''}" data-a="prp" data-v="${v}">${l}</button>`).join('')}</div>
       ${p.period === 'pick' ? `<div class="row" style="margin-top:12px"><select data-a-change="prmonth" aria-label="Bulan">${MONTHS_ID.map((n, i) => opt(i, n, p.month.getMonth() === i)).join('')}</select><select data-a-change="pryear" aria-label="Tahun">${years.map(y => opt(y, y, p.month.getFullYear() === y)).join('')}</select></div>` : ''}
       ${p.period === 'custom' ? `<div class="row" style="margin-top:12px"><input type="date" value="${p.start}" data-bind="pr.start" aria-label="Dari"><span class="muted">s/d</span><input type="date" value="${p.end}" data-bind="pr.end" aria-label="Sampai"></div>` : ''}
-      <p class="period-line">${esc(printTitle())}</p></div>
+      <p class="period-line">${esc(printFullTitle())}</p></div>
     <div class="metrics" style="margin-top:16px">${metric('Pengeluaran', r.expense, '↗', true, 'pr-all')}${metric('Pemasukan', r.income, '↙', false, 'pr-all')}${metric('Transaksi', 0, '#', false, 'pr-all', r.entries.length.toLocaleString('id-ID'))}</div>
     <div class="card" style="margin-top:16px"><div class="card-h"><b>Isi laporan</b></div>
+      <label class="row" style="gap:10px;margin-bottom:12px"><span class="bold">Kategori</span><select data-bind="pr.cat" aria-label="Kategori laporan" style="min-width:220px">${catOptions()}</select></label>
       <label class="chk"><input type="checkbox" data-bind="pr.cats" ${p.cats ? 'checked' : ''}> Ringkasan per kategori</label><br>
       <label class="chk" style="margin-top:8px"><input type="checkbox" data-bind="pr.tx" ${p.tx ? 'checked' : ''}> Rincian semua transaksi</label>
       <div class="row" style="margin-top:18px"><button class="btn primary big" data-a="prpdf" ${r.entries.length ? '' : 'disabled'}>⬇ Unduh PDF</button><button class="btn big" data-a="prxlsx" ${r.entries.length ? '' : 'disabled'}>⬇ Unduh Excel</button><button class="btn" data-a="prprint" ${r.entries.length ? '' : 'disabled'}>🖨 Cetak ke printer</button></div>
@@ -935,7 +946,7 @@ function vPrint() {
     ${r.cats.length ? `<div class="card" style="margin-top:16px"><div class="card-h"><b>Pratinjau per kategori</b></div>${r.cats.map(c => `<button class="catrow" data-a="detail" data-what="pr-cat" data-k="${c.key}"><div class="l"><span>${esc(c.name)}</span><span class="muted small">${c.count}×</span><span class="grow"></span><span class="num">${money(c.total)}</span><span class="chev">›</span></div></button>`).join('')}</div>` : ''}`;
 }
 function printHTML() {
-  const p = ui.pr; const r = printReport(); const t = printTitle();
+  const p = ui.pr; const r = printReport(); const t = printFullTitle();
   const cats = p.cats ? `<h2>Pengeluaran per kategori</h2><table><thead><tr><th>Kategori</th><th class="n">Transaksi</th><th class="n">Total</th><th class="n">%</th></tr></thead><tbody>${r.cats.map(c => `<tr><td>${esc(c.name)}</td><td class="n">${c.count}</td><td class="n">${money(c.total)}</td><td class="n">${(c.total / Math.max(1, r.expense) * 100).toFixed(1).replace('.', ',')}%</td></tr>`).join('')}<tr class="tot"><td>Total</td><td class="n">${r.cats.reduce((a, c) => a + c.count, 0)}</td><td class="n">${money(r.expense)}</td><td class="n">100%</td></tr></tbody></table>
     ${r.incCats.length ? `<h2>Pemasukan per kategori</h2><table><tbody>${r.incCats.map(c => `<tr><td>${esc(c.name)}</td><td class="n">${c.count}</td><td class="n">${money(c.total)}</td></tr>`).join('')}</tbody></table>` : ''}` : '';
   const tx = p.tx ? `<h2>Rincian transaksi</h2><table><thead><tr><th>Tanggal</th><th>Catatan</th><th>Kategori</th><th class="n">Pemasukan</th><th class="n">Pengeluaran</th></tr></thead><tbody>${r.entries.map(e => `<tr><td class="nw">${dateText(e.date)}</td><td>${esc(e.note || '')}</td><td>${esc(e.category ? categoryName(L, e.category) : '—')}</td><td class="n">${e.kind === 'Pemasukan' ? money(e.amount) : ''}</td><td class="n">${e.kind === 'Pengeluaran' ? money(e.amount) : ''}</td></tr>`).join('')}<tr class="tot"><td colspan="3">Total</td><td class="n">${money(r.income)}</td><td class="n">${money(r.expense)}</td></tr></tbody></table>` : '';
@@ -1048,10 +1059,10 @@ const A = {
   rprev: () => { ui.rep.month = addMonths(ui.rep.month, -1); }, rnext: () => { ui.rep.month = addMonths(ui.rep.month, 1); }, rthis: () => { ui.rep.month = monthStart(new Date()); },
   detail: b => { ui.menu = null; showDetail(detailFor(b)); throw null; },
   prp: b => { ui.pr.period = b.dataset.v; },
-  prpdf: () => { const [s] = printBounds(); const name = `Laporan-${USER}-${ymd(s)}.pdf`; const bytes = reportPDF(L, printReport(), printTitle(), USER, ui.pr);
+  prpdf: () => { const name = printFileName('pdf'); const bytes = reportPDF(L, printReport(), printFullTitle(), USER, ui.pr);
     download(name, bytes, 'application/pdf'); ui.msg = `File PDF "${name}" diunduh (cek folder Unduhan / Downloads).`; },
   prprint: () => { $('#print-area').innerHTML = printHTML(); window.print(); throw null; },
-  prxlsx: () => { const [s] = printBounds(); download(`Laporan-${USER}-${ymd(s)}.xlsx`, reportXLSX(L, printReport(), `Laporan Keuangan ${USER} — ${printTitle()}`, ui.pr), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); ui.msg = 'File Excel diunduh.'; },
+  prxlsx: () => { download(printFileName('xlsx'), reportXLSX(L, printReport(), `Laporan Keuangan ${USER} — ${printFullTitle()}`, ui.pr), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); ui.msg = 'File Excel diunduh.'; },
   pinset: async () => { const a = $('#pin1').value, b = $('#pin2').value; if (!/^\d{6,12}$/.test(a)) fail('PIN harus 6–12 angka.'); if (a !== b) fail('Konfirmasi PIN tidak sama.');
     const salt = uuid(); ls.set('pin', JSON.stringify({ salt, hash: await hashPin(a, salt) })); ui.msg = 'PIN tersimpan di browser ini.'; },
   pinoff: () => { ls.del('pin'); ui.msg = 'PIN dinonaktifkan.'; },
