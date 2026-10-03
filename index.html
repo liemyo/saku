@@ -116,6 +116,25 @@ dialog h3{margin:0 0 16px;font-size:20px}
 }
 .wallet svg{width:22px;height:22px;flex:none}
 nav{scrollbar-width:none}nav::-webkit-scrollbar{display:none}
+.gate{position:fixed;inset:0;display:grid;place-items:center;padding:16px;overflow:hidden;background:radial-gradient(1200px 700px at 15% 10%,#2fa47f 0%,transparent 60%),radial-gradient(900px 600px at 90% 90%,#1b5e8c 0%,transparent 55%),linear-gradient(160deg,#0d2a22,#0b1a26)}
+.gate-glow{position:absolute;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.12),transparent 65%);top:-140px;right:-120px;filter:blur(10px)}
+.gate-card{position:relative;width:min(380px,100%);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-radius:24px;padding:36px 28px 26px;text-align:center;color:#fff;box-shadow:0 30px 80px rgba(0,0,0,.35);animation:rise .5s ease-out}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.gate-logo{width:72px!important;height:72px!important;margin:0 auto 12px;box-shadow:0 10px 30px rgba(47,164,127,.5);background:linear-gradient(135deg,#3cc497,#1a8566)!important}
+.gate h1{margin:0;font-size:28px;letter-spacing:-.02em}
+.gate-sub{margin:4px 0 26px;color:rgba(255,255,255,.72)}
+.gate-field{display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:4px 14px;text-align:left}
+.gate-field:focus-within{border-color:#4fd1a5;box-shadow:0 0 0 3px rgba(79,209,165,.25)}
+.gate-field input{flex:1;background:none!important;border:0!important;outline:0!important;color:#fff;font-size:16px;padding:10px 0}
+.gate-field input::placeholder{color:rgba(255,255,255,.55)}
+.gate-btn{width:100%;margin-top:14px;padding:12px;font-size:16px;font-weight:600;border-radius:14px;background:linear-gradient(135deg,#3cc497,#1a8566)!important;border:0!important;color:#fff!important}
+.gate .red{color:#ffb3b3;min-height:18px;margin-top:10px}
+.gate-note{color:rgba(255,255,255,.6);font-size:12.5px;margin:6px 0 0;line-height:1.5}
+.user-chip{display:flex;align-items:center;gap:8px;background:var(--card);border-radius:10px;padding:6px 8px}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:700;font-size:13px}
+.hide-lg{display:none}
+@media (max-width:820px){.hide-lg{display:inline-flex}}
+@media (max-width:820px){.top{gap:8px}.top .btn{padding:6px 10px}}
 </style>
 </head>
 <body>
@@ -353,10 +372,24 @@ const Sepran = {
   }
 };
 
+// Users: each name gets its own book. Server-side seed data (if any) is stored encrypted with a key derived from the name.
+const Users = {
+  normalize: s => String(s ?? '').trim().toLowerCase(),
+  valid: s => /^[a-z0-9._-]{3,32}$/.test(s),
+  b64: u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }, unb64: s => Uint8Array.from(atob(s), c => c.charCodeAt(0)),
+  async fileId(name) { const b = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('sakumac-id:' + name))); return [...b.slice(0, 16)].map(x => x.toString(16).padStart(2, '0')).join(''); },
+  async key(name) { const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(name), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: new TextEncoder().encode('sakumac-key-v1'), iterations: 250000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); },
+  async encrypt(name, text) { const iv = crypto.getRandomValues(new Uint8Array(12)); const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await Users.key(name), new TextEncoder().encode(text))); return JSON.stringify({ v: 1, iv: Users.b64(iv), ct: Users.b64(ct) }); },
+  async decrypt(name, json) { const o = typeof json === 'string' ? JSON.parse(json) : json; const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: Users.unb64(o.iv) }, await Users.key(name), Users.unb64(o.ct)); return new TextDecoder().decode(pt); }
+};
+
 
 // SakuMac Web — UI
-const KEY = 'sakumac.ledger.v1', PREV = 'sakumac.ledger.before-change';
-const ls = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); return true; } catch { return false; } }, del: k => { try { localStorage.removeItem(k); } catch {} } };
+const KEY = 'ledger', PREV = 'before-change', LEGACY = 'sakumac.ledger.v1', OWNER = 'liemyo25';
+let USER = null; // every key except the theme is stored per user
+const lk = k => k === 'appearance' || k === 'lastUser' ? 'sakumac.' + k : `sakumac.u.${USER}.${k}`;
+const ls = { get: k => { try { return localStorage.getItem(lk(k)); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(lk(k), v); return true; } catch { return false; } }, del: k => { try { localStorage.removeItem(lk(k)); } catch {} } };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const $ = s => document.querySelector(s);
 const PALETTE = ['#2a8c6d', '#4a7fd8', '#e8952f', '#9f66cc', '#db5c66', '#3fb3bf', '#8c9490'];
@@ -394,16 +427,26 @@ function commit(c) {
   validate(c); const old = ls.get(KEY); if (old) ls.set(PREV, old); L = c; persist();
 }
 function restore(l) { validate(l); loadFailed = false; commit(l); }
-async function serverLedger() { const r = await fetch('SakuMac-backup.json?v=' + Date.now(), { cache: 'no-store' }); if (!r.ok) fail('Data SakuMac di server tidak ditemukan.'); const l = await r.json(); validate(l); return l; }
-async function boot() {
-  applyTheme();
-  const raw = ls.get(KEY);
-  if (raw) { try { const l = JSON.parse(raw); validate(l); L = l; } catch (e) { loadFailed = true; L = defaultLedger(); ui.msg = 'Data di browser tidak dapat dibuka; data asli tetap disimpan. Pulihkan backup. ' + e.message; } }
-  else { try { L = await serverLedger(); persist(); ui.msg = `Data SakuMac dimuat: ${L.entries.length} transaksi, ${L.wallets.length} dompet.`; } catch { L = defaultLedger(); persist(); } }
-  ui.locked = !!ls.get('pin');
-  if (!ui.locked) reminder();
-  render();
+// Encrypted server copy for this user (data/<id>.json); null when the user has none.
+async function serverLedger(quiet) {
+  const r = await fetch(`data/${await Users.fileId(USER)}.json?v=${Date.now()}`, { cache: 'no-store' });
+  if (!r.ok) { if (quiet) return null; fail('Tidak ada data server untuk pengguna ini.'); }
+  const l = JSON.parse(await Users.decrypt(USER, await r.text())); validate(l); return l;
 }
+let hasServer = false;
+async function boot() { applyTheme(); render(); }
+async function login(raw) {
+  const name = Users.normalize(raw); if (!Users.valid(name)) fail('Nama pengguna 3–32 karakter: huruf, angka, titik, garis bawah, atau tanda minus.');
+  USER = name; loadFailed = false; ui.msg = ''; ui.section = 'Ringkasan'; ui.rep.mode = ls.get('reportMode') || 'Bulanan'; ui.rep.selected = null;
+  let stored = ls.get(KEY);
+  if (!stored && name === OWNER) { try { const old = localStorage.getItem(LEGACY); if (old) { stored = old; ls.set(KEY, old); localStorage.removeItem(LEGACY); localStorage.removeItem('sakumac.ledger.before-change'); } } catch {} }
+  let server = null; try { server = await serverLedger(true); } catch {} hasServer = !!server;
+  if (stored) { try { const l = JSON.parse(stored); validate(l); L = l; ui.msg = `Selamat datang kembali, ${name}.`; } catch (e) { loadFailed = true; L = defaultLedger(); ui.msg = 'Data di browser tidak dapat dibuka; data asli tetap disimpan. Pulihkan backup. ' + e.message; } }
+  else if (server) { L = server; persist(); ui.msg = `Selamat datang, ${name}. Data dimuat: ${L.entries.length} transaksi, ${L.wallets.length} dompet.`; }
+  else { L = defaultLedger(); persist(); ui.msg = `Buku catatan baru dibuat untuk "${name}". Mulai dengan mengatur saldo awal di menu Dompet.`; }
+  ui.locked = !!ls.get('pin'); if (!ui.locked) reminder();
+}
+function logout() { USER = null; L = null; ui.locked = false; ui.menu = null; ui.msg = ''; ui.tx.search = ''; if (dlg().open) dlg().close(); }
 function reminder() {
   if (ls.get('weeklyMail') === '1' && L.entries.length) { const last = Number(ls.get('lastMail') || 0); if (Date.now() - last > 7 * 864e5 && !ui.msg) ui.msg = 'Sudah lebih dari seminggu sejak backup ke Gmail. Buka Backup & pengaturan → Kirim backup ke Gmail.'; }
 }
@@ -415,16 +458,17 @@ const backupName = () => `SakuMac-backup-${ymd(new Date())}.json`;
 // ---------- render ----------
 function render() {
   const f = document.activeElement; const fid = f?.id; const sel = f && 'selectionStart' in f ? [f.selectionStart, f.selectionEnd] : null;
+  if (!USER) { $('#app').innerHTML = gateView(); setTimeout(() => $('#user-in')?.focus(), 30); return; }
   if (ui.locked) { $('#app').innerHTML = lockView(); $('#pin-in')?.focus(); return; }
   $('#app').innerHTML = `<div class="app">
     <aside>
       <div class="brand">${LOGO}<div><b>SakuMac</b><small>Catatan keuangan pribadi</small></div></div>
       <nav>${SECTIONS.map(([s, i]) => `<button data-a="nav" data-s="${s}" class="${ui.section === s ? 'on' : ''}">${icon(i)}${s}</button>`).join('')}</nav>
-      <div class="side-foot"><div>💾 Tersimpan di browser ini</div><div>Format sama dengan aplikasi SakuMac</div></div>
+      <div class="side-foot"><div class="user-chip"><span class="avatar">${esc(USER[0].toUpperCase())}</span><span class="grow">${esc(USER)}</span><button class="icon-btn" data-a="logout" title="Keluar">Keluar</button></div><div style="margin-top:8px">💾 Tersimpan di browser ini</div></div>
     </aside>
     <main>
       <div class="top"><div><h1>${esc(ui.section)}</h1><p>Kelola keuangan Anda, satu transaksi setiap kali.</p></div><div class="sp"></div>
-        ${ls.get('pin') ? '<button class="btn" data-a="lock" title="Kunci">🔒</button>' : ''}<button class="btn primary" data-a="new">＋ Tambah transaksi</button></div>
+        <button class="btn hide-lg" data-a="logout" title="Keluar" aria-label="Keluar">Keluar</button>${ls.get('pin') ? '<button class="btn" data-a="lock" title="Kunci">🔒</button>' : ''}<button class="btn primary" data-a="new">＋ Tambah<span class="hide-sm"> transaksi</span></button></div>
       <div class="view" id="view">${view()}</div>
       ${ui.msg ? `<div class="msg"><span>ⓘ</span><span>${esc(ui.msg)}</span><button class="icon-btn" data-a="msgx">✕</button></div>` : ''}
     </main></div>`;
@@ -582,15 +626,25 @@ function vSettings() {
       <p class="muted small">PIN hanya mengunci tampilan di browser ini; data tidak dienkripsi. Touch ID hanya tersedia di aplikasi Mac.</p></div>
     <div class="group"><div class="t">Backup lokal & ekspor</div>
       <div class="row"><button class="btn" data-a="bsave">Simpan backup lengkap</button><button class="btn" data-a="bopen">Pulihkan backup…</button><button class="btn" data-a="csvall">Ekspor semua CSV</button></div>
-      <div class="row" style="margin-top:10px"><button class="btn" data-a="csvopen">Impor CSV SakuMac…</button><button class="btn" data-a="xlsxopen">Impor Excel Sepran…</button><button class="btn" data-a="server">Samakan dengan data SakuMac (server)</button></div>
+      <div class="row" style="margin-top:10px"><button class="btn" data-a="csvopen">Impor CSV SakuMac…</button><button class="btn" data-a="xlsxopen">Impor Excel Sepran…</button>${hasServer ? '<button class="btn" data-a="server">Samakan dengan data server</button>' : ''}</div>
       <p class="muted small">Backup mencakup dompet, saldo awal, kategori, transaksi, utang/piutang, pembayaran, dan periode laporan — formatnya sama dengan aplikasi SakuMac di Mac, jadi bisa dipindah dua arah. Pemulihan mengganti data setelah konfirmasi; salinan sebelum perubahan disimpan di browser.</p></div>
     <div class="group"><div class="t">Backup ke Gmail</div><p class="muted" style="margin:0 0 10px">Kirim berkas backup lengkap ke alamat Gmail Anda.</p>
       <div class="row"><input type="text" id="gmail" placeholder="Alamat Gmail Anda" value="${esc(ls.get('gmail') || '')}" style="width:300px"><button class="btn primary" data-a="mail">Kirim backup ke Gmail</button></div>
       <label class="chk" style="margin-top:10px"><input type="checkbox" data-a-change="weekly" ${ls.get('weeklyMail') === '1' ? 'checked' : ''}> Ingatkan saya mengirim backup ke Gmail setiap minggu</label>
       ${last ? `<p class="muted small">Backup email terakhir disiapkan: ${dateText(last, true)}</p>` : ''}
       <p class="muted small">Di iPhone/iPad/Mac (Safari) akan muncul menu Bagikan: pilih Mail atau Gmail, berkas sudah terlampir. Di browser lain berkas backup diunduh dan Gmail dibuka di tab baru — lampirkan berkas yang baru diunduh, lalu kirim. Untuk memulihkan: unduh lampiran dari Gmail → Pulihkan backup….</p></div>
-    <div class="group"><div class="t">Tentang data</div><p style="margin:0">Data tersimpan di browser ini (${L.entries.length} transaksi, ${L.wallets.length} dompet, ${L.categories.length} kategori). Browser atau perangkat lain punya salinan sendiri: pindahkan dengan backup, atau klik <b>Samakan dengan data SakuMac (server)</b>. Menghapus data situs di browser akan menghapus perubahan yang belum di-backup.</p></div>
+    <div class="group"><div class="t">Tentang data</div><p style="margin:0">Data tersimpan di browser ini (${L.entries.length} transaksi, ${L.wallets.length} dompet, ${L.categories.length} kategori). Pengguna: <b>${esc(USER)}</b>. Browser atau perangkat lain punya salinan sendiri: pindahkan dengan backup${hasServer ? ', atau klik <b>Samakan dengan data server</b>' : ''}. Menghapus data situs di browser akan menghapus perubahan yang belum di-backup.</p></div>
     <p class="muted small">SakuMac Web • versi web dari aplikasi SakuMac • Bukan produk resmi Sepran</p>`;
+}
+function gateView() {
+  return `<div class="gate"><div class="gate-glow"></div><form class="gate-card" id="gate-form" autocomplete="off">
+    ${LOGO.replace('width="20" height="20"', 'width="38" height="38"').replace('class="logo"', 'class="logo gate-logo"')}
+    <h1>SakuMac</h1><p class="gate-sub">Catatan keuangan pribadi</p>
+    <label class="gate-field"><span>👤</span><input id="user-in" name="user" type="text" placeholder="Nama pengguna" autocapitalize="none" spellcheck="false" maxlength="32" required></label>
+    <button class="btn primary gate-btn" type="submit">Masuk</button>
+    <div class="red small" id="gate-err" role="alert"></div>
+    <p class="gate-note">Setiap nama pengguna memiliki buku catatan sendiri. Nama yang belum pernah dipakai akan membuat buku catatan baru.</p>
+  </form></div>`;
 }
 function lockView() {
   return `<div class="lock"><div class="box">${LOGO.replace('width="20" height="20"', 'width="34" height="34"').replace('class="logo"', 'class="logo" style="width:64px;height:64px"')}<h2 style="margin:0">Buka SakuMac</h2>
@@ -685,13 +739,14 @@ const A = {
   pinset: async () => { const a = $('#pin1').value, b = $('#pin2').value; if (!/^\d{6,12}$/.test(a)) fail('PIN harus 6–12 angka.'); if (a !== b) fail('Konfirmasi PIN tidak sama.');
     const salt = uuid(); ls.set('pin', JSON.stringify({ salt, hash: await hashPin(a, salt) })); ui.msg = 'PIN tersimpan di browser ini.'; },
   pinoff: () => { ls.del('pin'); ui.msg = 'PIN dinonaktifkan.'; },
+  logout: () => logout(),
   unlock: async () => { const p = JSON.parse(ls.get('pin') || 'null'); const v = $('#pin-in').value; if (!p || await hashPin(v, p.salt) === p.hash) { ui.locked = false; reminder(); } else { $('#pin-err').textContent = 'PIN salah.'; $('#pin-in').value = ''; throw null; } },
   bsave: () => download(backupName(), backupJSON(), 'application/json'),
   bopen: () => pickFile('.json,application/json', async f => { let l; try { l = JSON.parse(await f.text()); } catch { fail('Berkas backup tidak dapat dibaca.'); } previewRestore(l, `Backup "${f.name}"`); }),
   csvall: () => download('SakuMac-transaksi.csv', '﻿' + CSV.export(L, L.entries), 'text/csv'),
   csvopen: () => pickFile('.csv,text/csv,text/plain', async f => { const [l, n] = CSV.importing(await f.text(), L); commit(l); ui.msg = `${n} transaksi ditambahkan. Duplikat identik dilewati.`; }),
   xlsxopen: () => pickFile('.xlsx', async f => { const rows = Sepran.rows(await Sepran.grid(await f.arrayBuffer())); const [l, n, s] = await Sepran.importing(rows, L); commit(l); ui.msg = `Sepran: ${n} transaksi baru ditambahkan ke dompet "Sepran", ${s} sudah ada dilewati.`; }),
-  server: async () => { const l = await serverLedger(); previewRestore(l, 'Data SakuMac di server'); },
+  server: async () => { const l = await serverLedger(); previewRestore(l, `Data server "${USER}"`); },
   mail: async () => {
     const addr = $('#gmail').value.trim(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) fail('Masukkan alamat Gmail yang valid.'); ls.set('gmail', addr);
     const day = ymd(new Date()); const subject = `Backup SakuMac ${day}`; const body = `Backup SakuMac ${day}: ${L.entries.length} transaksi, ${L.wallets.length} dompet. Pulihkan lewat SakuMac → Backup & pengaturan → Pulihkan backup….`;
@@ -726,7 +781,9 @@ function bind(el) {
   if (o === 'wal' || o === 'cat') return; // form fields: no re-render while typing
   render();
 }
-document.addEventListener('visibilitychange', () => { if (document.hidden && ls.get('pin') && !ui.locked) { ui.locked = true; if (dlg().open) dlg().close(); render(); } });
+document.addEventListener('submit', ev => { if (ev.target.id !== 'gate-form') return; ev.preventDefault(); const btn = ev.target.querySelector('button'); const v = $('#user-in').value; btn.disabled = true; btn.textContent = 'Membuka…';
+  login(v).then(render, e => { USER = null; L = null; btn.disabled = false; btn.textContent = 'Masuk'; $('#gate-err').textContent = e.message; }); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && USER && ls.get('pin') && !ui.locked) { ui.locked = true; if (dlg().open) dlg().close(); render(); } });
 boot();
 </script>
 </body>
