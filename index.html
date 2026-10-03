@@ -662,7 +662,7 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
 
 
 // Saku.yuk Web — UI
-const BUILD = '20261003-151630';
+const BUILD = '20261003-160055';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -784,7 +784,7 @@ function vTransactions() {
   const es = L.entries.filter(x => { const d = new Date(x.date); return d >= d0 && d < d1; }).sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
   const out = es.filter(x => x.kind === 'Pengeluaran').reduce((a, x) => a + x.amount, 0), inc = es.filter(x => x.kind === 'Pemasukan').reduce((a, x) => a + x.amount, 0);
   return `<div class="daybar"><button class="btn day-nav" data-a="dprev" aria-label="Hari sebelumnya">‹</button>
-      <div class="day-title"><div class="bold">${dayTitle(d0)}</div><div class="muted small">${+d0 === +today ? 'Hari ini' : +d0 === +addDays(today, -1) ? 'Kemarin' : es.length + ' transaksi'}</div></div>
+      <div class="day-title"><div class="bold">${dayTitle(d0)}</div><div class="muted small">${+d0 === +today ? `Hari ini · <span id="live-clock">${clockText()}</span>` : +d0 === +addDays(today, -1) ? 'Kemarin' : es.length + ' transaksi'}</div></div>
       <button class="btn day-nav" data-a="dnext" aria-label="Hari berikutnya">›</button></div>
     <div class="row" style="justify-content:center;margin:10px 0 18px"><input type="date" value="${dateInput(d0)}" data-a-change="dpick" aria-label="Pilih tanggal">${+d0 !== +today ? '<button class="btn" data-a="dtoday">Hari ini</button>' : ''}</div>
     <div class="metrics two">${metric('Pengeluaran', out, '↗', true, 'day-out')}${metric('Pemasukan', inc, '↙', false, 'day-in')}</div>
@@ -1103,7 +1103,7 @@ const A = {
   logout: () => logout(),
   dprev: () => { ui.day = addDays(ui.day, -1); }, dnext: () => { ui.day = addDays(ui.day, 1); }, dtoday: () => { ui.day = startOfDay(new Date()); },
   openday: b => { ui.day = new Date(Number(b.dataset.d)); ui.section = 'Transaksi'; window.scrollTo(0, 0); },
-  unlock: async () => { const p = JSON.parse(ls.get('pin') || 'null'); const v = $('#pin-in').value; if (!p || await hashPin(v, p.salt) === p.hash) { ui.locked = false; reminder(); } else { $('#pin-err').textContent = 'PIN salah.'; $('#pin-in').value = ''; throw null; } },
+  unlock: async () => { const p = JSON.parse(ls.get('pin') || 'null'); const v = $('#pin-in').value; if (!p || await hashPin(v, p.salt) === p.hash) { ui.locked = false; goToday(); reminder(); } else { $('#pin-err').textContent = 'PIN salah.'; $('#pin-in').value = ''; throw null; } },
   bsave: () => download(backupName(), backupJSON(), 'application/json'),
   bopen: () => pickFile('.json,application/json', async f => { let l; try { l = JSON.parse(await f.text()); } catch { fail('Berkas backup tidak dapat dibaca.'); } previewRestore(l, `Backup "${f.name}"`); }),
   csvall: () => download('Saku.yuk-transaksi.csv', '﻿' + CSV.export(L, L.entries), 'text/csv'),
@@ -1161,6 +1161,20 @@ document.addEventListener('touchend', ev => { if (!touch) return; const dx = ev.
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !USER) checkUpdate(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && USER && ls.get('pin') && !ui.locked) { ui.locked = true; if (dlg().open) dlg().close(); render(); } });
 let lastSm = window.innerWidth < 820; window.addEventListener('resize', () => { const sm = window.innerWidth < 820; if (sm !== lastSm && USER && !ui.locked) { lastSm = sm; render(); } });
+// Real-time: live clock on the Transaksi day header, and when the date changes (midnight, or returning
+// to the app on a later day) a Transaksi view that was showing "today" follows to the new today.
+function clockText() { const t = new Date(); return String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'); }
+function goToday() { ui.section = 'Transaksi'; ui.day = startOfDay(new Date()); }
+let lastToday = +startOfDay(new Date());
+function tick() {
+  const c = document.getElementById('live-clock'); if (c) c.textContent = clockText();
+  const now = +startOfDay(new Date()); if (now === lastToday) return;
+  const wasToday = +startOfDay(ui.day) === lastToday; lastToday = now;
+  if (USER && !ui.locked && wasToday) { ui.day = new Date(now); if (!dlg().open && ui.section === 'Transaksi') render(); }
+}
+setInterval(tick, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+window.addEventListener('focus', tick);
 boot();
 </script>
 </body>
