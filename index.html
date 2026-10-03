@@ -662,7 +662,7 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
 
 
 // Saku.yuk Web — UI
-const BUILD = '20261003-161138';
+const BUILD = '20261003-162446';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -709,7 +709,9 @@ const ui = {
 };
 
 // ---------- storage ----------
-function persist() { if (!ls.set(KEY, JSON.stringify(L))) ui.msg = 'Gagal menyimpan di browser (penyimpanan penuh/diblokir). Segera simpan backup.'; }
+let savedAt = null;
+function persist() { if (!ls.set(KEY, JSON.stringify(L))) { savedAt = null; ui.msg = 'Gagal menyimpan di browser (penyimpanan penuh/diblokir). Segera simpan backup.'; return; } savedAt = new Date(); try { navigator.storage?.persist?.(); } catch {} }
+const saveText = () => savedAt ? '✓ Tersimpan otomatis ' + [savedAt.getHours(), savedAt.getMinutes(), savedAt.getSeconds()].map(n => String(n).padStart(2, '0')).join(':') : '💾 Tersimpan otomatis di browser ini';
 function commit(c) {
   if (loadFailed) fail('Data lama gagal dibuka. Pulihkan backup sebelum mengubah data.');
   validate(c); const old = ls.get(KEY); if (old) ls.set(PREV, old); L = c; persist();
@@ -752,7 +754,7 @@ function render() {
     <aside>
       <div class="brand">${LOGO}<div><b>Saku.yuk</b><small>Catatan keuangan pribadi</small></div></div>
       <nav>${SECTIONS.map(([s, i]) => `<button data-a="nav" data-s="${s}" class="${ui.section === s ? 'on' : ''}">${icon(i)}<span class="nl">${s}</span><span class="ns">${s === 'Backup & pengaturan' ? 'Pengaturan' : s}</span></button>`).join('')}</nav>
-      <div class="side-foot"><div class="user-chip"><span class="avatar">${esc(USER[0].toUpperCase())}</span><span class="grow">${esc(USER)}</span><button class="icon-btn" data-a="logout" title="Keluar">Keluar</button></div><div style="margin-top:8px">💾 Tersimpan di browser ini</div></div>
+      <div class="side-foot"><div class="user-chip"><span class="avatar">${esc(USER[0].toUpperCase())}</span><span class="grow">${esc(USER)}</span><button class="icon-btn" data-a="logout" title="Keluar">Keluar</button></div><div style="margin-top:8px" id="save-state">${saveText()}</div></div>
     </aside>
     <main>
       <div class="top"><div><h1><span class="nl">${esc(ui.section)}</span><span class="ns">${ui.section === 'Backup & pengaturan' ? 'Pengaturan' : esc(ui.section)}</span></h1></div><div class="sp"></div>
@@ -1062,7 +1064,7 @@ function entryDialog(existing, after) {
     const e = { id: existing?.id || uuid(), date: iso(d), kind, amount, wallet: w, note: String(fd.get('note') || '') };
     if (kind === 'Transfer') { const dest = fd.get('destination'); if (!dest) fail('Pilih dompet tujuan.'); if (dest === w) fail('Dompet tujuan harus berbeda.'); e.destination = dest; }
     else if (fd.get('category')) e.category = fd.get('category');
-    commit(upsert(L, e)); if (ui.section === 'Transaksi') ui.day = startOfDay(d);
+    commit(upsert(L, e)); if (ui.section === 'Transaksi') ui.day = startOfDay(d); const m = ui.msg = (existing ? 'Perubahan' : 'Transaksi') + ' tersimpan otomatis.'; setTimeout(() => { if (ui.msg === m) { ui.msg = ''; $('.msg')?.remove(); } }, 3000);
     if (after) setTimeout(() => { after(); render(); showDetail(ui._detail); }, 0);
   });
   dlg().onclick = ev => { const b = ev.target.closest('[data-kind]'); if (!b) return; kind = b.dataset.kind; const f = $('#dlg-form'); const html = draw(); f.innerHTML = html + '<div class="err" id="dlg-err"></div>'; };
@@ -1178,6 +1180,11 @@ function tick() {
 setInterval(tick, 15000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 window.addEventListener('focus', tick);
+// Auto update: another tab/window of this browser saved the same book → reload it here.
+window.addEventListener('storage', ev => {
+  if (!USER || ev.key !== lk(KEY) || !ev.newValue) return;
+  try { const l = JSON.parse(ev.newValue); validate(l); L = l; savedAt = new Date(); if (!ui.locked && !dlg().open) render(); } catch {}
+});
 boot();
 </script>
 </body>
