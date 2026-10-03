@@ -7,9 +7,9 @@
 <meta name="description" content="SakuMac versi web: catatan keuangan pribadi — dompet, transaksi, kategori, utang/piutang, laporan per kategori & per bulan, impor Sepran, backup ke Gmail.">
 <meta name="theme-color" content="#1a8566">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%231a8566'/><path d='M28 66c0-22 16-36 42-36-3 26-18 42-38 42l-7 7' fill='none' stroke='white' stroke-width='8' stroke-linecap='round'/></svg>">
-<style>:root{--bg:#f5f6f4;--side:#eceeeb;--card:#ffffff;--card2:#f3f5f3;--ink:#17201c;--muted:#64716b;--line:#e1e5e2;--accent:#1a8566;--accent-soft:rgba(26,133,102,.1);--accent-ink:#fff;--red:#d64545;--red-soft:rgba(214,69,69,.09);--input:#fff;--shadow:0 1px 2px rgba(0,0,0,.05)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1d1f;--side:#141516;--card:#26282a;--card2:#2c2f31;--ink:#eceeed;--muted:#9aa29e;--line:#34373a;--accent:#3aa784;--accent-soft:rgba(58,167,132,.14);--accent-ink:#06130e;--red:#ef6b6b;--red-soft:rgba(239,107,107,.12);--input:#1f2123;--shadow:none}}
-:root[data-theme="dark"]{--bg:#1c1d1f;--side:#141516;--card:#26282a;--card2:#2c2f31;--ink:#eceeed;--muted:#9aa29e;--line:#34373a;--accent:#3aa784;--accent-soft:rgba(58,167,132,.14);--accent-ink:#06130e;--red:#ef6b6b;--red-soft:rgba(239,107,107,.12);--input:#1f2123;--shadow:none}
+<style>:root{color-scheme:light;--bg:#f5f6f4;--side:#eceeeb;--card:#ffffff;--card2:#f3f5f3;--ink:#0b1310;--muted:#3d4a44;--line:#e1e5e2;--accent:#1a8566;--accent-soft:rgba(26,133,102,.1);--accent-ink:#fff;--red:#d64545;--red-soft:rgba(214,69,69,.09);--input:#fff;--shadow:0 1px 2px rgba(0,0,0,.05)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#1c1d1f;--side:#141516;--card:#26282a;--card2:#2c2f31;--ink:#ffffff;--muted:#d0d7d3;--line:#3a3e41;--accent:#3fb88f;--accent-soft:rgba(58,167,132,.14);--accent-ink:#06130e;--red:#ff8080;--red-soft:rgba(239,107,107,.12);--input:#1f2123;--shadow:none}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#1c1d1f;--side:#141516;--card:#26282a;--card2:#2c2f31;--ink:#ffffff;--muted:#d0d7d3;--line:#3a3e41;--accent:#3fb88f;--accent-soft:rgba(58,167,132,.14);--accent-ink:#06130e;--red:#ff8080;--red-soft:rgba(239,107,107,.12);--input:#1f2123;--shadow:none}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
@@ -135,6 +135,33 @@ nav{scrollbar-width:none}nav::-webkit-scrollbar{display:none}
 .hide-lg{display:none}
 @media (max-width:820px){.hide-lg{display:inline-flex}}
 @media (max-width:820px){.top{gap:8px}.top .btn{padding:6px 10px}}
+
+/* Readability: crisp, high-contrast text everywhere */
+body{font-size:15px;font-weight:450;-webkit-font-smoothing:auto;text-rendering:optimizeLegibility}
+input,select,textarea{color:var(--ink)!important;font-weight:500;font-size:15px}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
+input[type=date],input[type=datetime-local]{color:var(--ink)!important}
+input::-webkit-datetime-edit,input::-webkit-datetime-edit-fields-wrapper,input::-webkit-datetime-edit-text{color:var(--ink)}
+input::-webkit-calendar-picker-indicator{opacity:1;cursor:pointer}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) input::-webkit-calendar-picker-indicator{filter:invert(1)}}
+:root[data-theme="dark"] input::-webkit-calendar-picker-indicator{filter:invert(1)}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.entry .main div:last-child{font-size:13px;color:var(--muted)}
+.entry .main div:first-child{font-weight:600}
+.form>label{color:var(--ink);font-weight:600}
+.metric .h{color:var(--muted);font-weight:500}
+table.months th{color:var(--muted)}
+.chart-x{fill:var(--muted);font-size:11.5px}
+.group>.t{color:var(--ink);font-size:13.5px}
+nav button{font-weight:500}
+/* Daily transactions */
+.daybar{display:flex;align-items:center;gap:14px;justify-content:center}
+.day-nav{width:46px;height:46px;border-radius:50%;font-size:24px;line-height:1;padding:0;display:grid;place-items:center}
+.day-title{text-align:center;min-width:220px}.day-title .bold{font-size:19px}
+.add-day{width:100%;margin-top:12px;padding:10px}
+.metrics.two{grid-template-columns:1fr 1fr}
+@media (max-width:820px){.metrics.two .metric{padding:14px 16px}.metrics.two .v{font-size:18px}.entry{gap:10px}.entry .ic{width:34px;height:34px}}
 </style>
 </head>
 <body>
@@ -393,7 +420,9 @@ const ls = { get: k => { try { return localStorage.getItem(lk(k)); } catch { ret
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const $ = s => document.querySelector(s);
 const PALETTE = ['#2a8c6d', '#4a7fd8', '#e8952f', '#9f66cc', '#db5c66', '#3fb3bf', '#8c9490'];
-const SECTIONS = [['Ringkasan', 'grid'], ['Transaksi', 'list'], ['Dompet', 'wallet'], ['Kategori', 'tag'], ['Utang & piutang', 'people'], ['Laporan', 'chart'], ['Backup & pengaturan', 'gear']];
+const SECTIONS = [['Laporan', 'chart'], ['Transaksi', 'list'], ['Ringkasan', 'grid'], ['Kategori', 'tag'], ['Utang & piutang', 'people'], ['Backup & pengaturan', 'gear']];
+const DAYS = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const dayTitle = d => { d = new Date(d); return `${DAYS[d.getDay()]}, ${d.getDate()} ${monthName(d).replace(/ \d+$/, '')} ${d.getFullYear()}`; };
 const ICONS = {
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   list: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h10M7 17h6"/>',
@@ -413,7 +442,7 @@ const fromDateInput = s => { const [y, m, d] = s.split('-').map(Number); return 
 let L = null, loadFailed = false;
 const now = new Date();
 const ui = {
-  section: 'Ringkasan', msg: '', menu: null, locked: false,
+  section: 'Laporan', day: startOfDay(now), msg: '', menu: null, locked: false,
   tx: { search: '', kind: 'Semua', wallet: '', limited: false, start: dateInput(monthStart(now)), end: dateInput(now), limit: 300 },
   rep: { mode: ls.get('reportMode') || 'Bulanan', month: monthStart(now), start: dateInput(addMonths(monthStart(now), -5)), end: dateInput(now), wallet: '', selected: null },
   wal: { id: null, name: '', opening: '0', negative: false }, cat: { id: null, name: '', income: false },
@@ -437,7 +466,7 @@ let hasServer = false;
 async function boot() { applyTheme(); render(); }
 async function login(raw) {
   const name = Users.normalize(raw); if (!Users.valid(name)) fail('Nama pengguna 3–32 karakter: huruf, angka, titik, garis bawah, atau tanda minus.');
-  USER = name; loadFailed = false; ui.msg = ''; ui.section = 'Ringkasan'; ui.rep.mode = ls.get('reportMode') || 'Bulanan'; ui.rep.selected = null;
+  USER = name; loadFailed = false; ui.msg = ''; ui.section = 'Laporan'; ui.day = startOfDay(new Date()); ui.rep.mode = ls.get('reportMode') || 'Bulanan'; ui.rep.selected = null;
   let stored = ls.get(KEY);
   if (!stored && name === OWNER) { try { const old = localStorage.getItem(LEGACY); if (old) { stored = old; ls.set(KEY, old); localStorage.removeItem(LEGACY); localStorage.removeItem('sakumac.ledger.before-change'); } } catch {} }
   let server = null; try { server = await serverLedger(true); } catch {} hasServer = !!server;
@@ -467,7 +496,7 @@ function render() {
       <div class="side-foot"><div class="user-chip"><span class="avatar">${esc(USER[0].toUpperCase())}</span><span class="grow">${esc(USER)}</span><button class="icon-btn" data-a="logout" title="Keluar">Keluar</button></div><div style="margin-top:8px">💾 Tersimpan di browser ini</div></div>
     </aside>
     <main>
-      <div class="top"><div><h1>${esc(ui.section)}</h1><p>Kelola keuangan Anda, satu transaksi setiap kali.</p></div><div class="sp"></div>
+      <div class="top"><div><h1>${esc(ui.section)}</h1></div><div class="sp"></div>
         <button class="btn hide-lg" data-a="logout" title="Keluar" aria-label="Keluar">Keluar</button>${ls.get('pin') ? '<button class="btn" data-a="lock" title="Kunci">🔒</button>' : ''}<button class="btn primary" data-a="new">＋ Tambah<span class="hide-sm"> transaksi</span></button></div>
       <div class="view" id="view">${view()}</div>
       ${ui.msg ? `<div class="msg"><span>ⓘ</span><span>${esc(ui.msg)}</span><button class="icon-btn" data-a="msgx">✕</button></div>` : ''}
@@ -476,15 +505,17 @@ function render() {
 }
 function view() {
   switch (ui.section) {
-    case 'Transaksi': return vTransactions(); case 'Dompet': return vWallets(); case 'Kategori': return vCategories();
+    case 'Transaksi': return vTransactions(); case 'Kategori': return vCategories();
     case 'Utang & piutang': return vDebts(); case 'Laporan': return vReports(); case 'Backup & pengaturan': return vSettings();
     default: return vDashboard();
   }
 }
+// Wallets are no longer shown: new entries go to the wallet used most.
+function defaultWallet() { const c = new Map(); for (const e of L.entries) c.set(e.wallet, (c.get(e.wallet) || 0) + 1); return [...L.wallets].sort((a, b) => (c.get(b.id) || 0) - (c.get(a.id) || 0))[0].id; }
 const metric = (title, value, ic, red) => `<div class="metric"><div class="h"><span>${title}</span><span class="${red ? 'red' : 'acc'}">${ic}</span></div><div class="v" title="${money(value)}">${money(value)}</div></div>`;
-function entryRow(e) {
+function entryRow(e, timeOnly) {
   const k = e.kind; const title = e.note || (k === 'Transfer' ? 'Transfer dompet' : categoryName(L, e.category));
-  const sub = `${dateText(e.date, true)} · ${esc(walletName(L, e.wallet))}${k === 'Transfer' ? ' → ' + esc(walletName(L, e.destination)) : ' · ' + esc(e.category ? categoryName(L, e.category) : '—')}`;
+  const t0 = new Date(e.date); const sub = `${timeOnly ? String(t0.getHours()).padStart(2, '0') + '.' + String(t0.getMinutes()).padStart(2, '0') : dateText(e.date, true)}${k === 'Transfer' ? ' · ' + esc(walletName(L, e.wallet)) + ' → ' + esc(walletName(L, e.destination)) : ' · ' + esc(e.category ? categoryName(L, e.category) : 'Tanpa kategori')}`;
   return `<div class="entry"><div class="ic ${k === 'Pengeluaran' ? 'red' : 'acc'}">${k === 'Pemasukan' ? '↙' : k === 'Pengeluaran' ? '↗' : '⇄'}</div>
     <div class="main"><div>${esc(title)}</div><div>${sub}</div></div>
     <div class="amt ${k === 'Pengeluaran' ? 'red' : ''}">${k === 'Pengeluaran' ? '− ' : k === 'Pemasukan' ? '+ ' : ''}${money(e.amount)}</div>
@@ -494,35 +525,23 @@ function vDashboard() {
   const [s, e] = currentPeriod(L); const cur = L.entries.filter(x => { const d = new Date(x.date); return d >= s && d < e; });
   const sum = k => cur.filter(x => x.kind === k).reduce((a, x) => a + x.amount, 0);
   const recent = [...L.entries].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)).slice(0, 10);
-  return `<div class="metrics">${metric('Saldo seluruh dompet', L.wallets.reduce((a, w) => a + balance(L, w.id), 0), '▣')}${metric('Pemasukan periode ini', sum('Pemasukan'), '↙')}${metric('Pengeluaran periode ini', sum('Pengeluaran'), '↗', true)}</div>
-    <div class="h2">Dompet Anda <span class="grow"></span><span class="muted small" style="font-weight:400">Periode dimulai tanggal ${L.cycleDay}</span></div>
-    <div class="wallets">${L.wallets.map(w => `<div class="wallet"><span class="acc">${icon('wallet')}</span><div><div class="n">${esc(w.name)}</div><div class="b">${money(balance(L, w.id))}</div></div></div>`).join('')}</div>
+  return `<div class="metrics">${metric('Pemasukan periode ini', sum('Pemasukan'), '↙')}${metric('Pengeluaran periode ini', sum('Pengeluaran'), '↗', true)}${metric('Selisih', sum('Pemasukan') - sum('Pengeluaran'), '=')}</div>
+    <p class="muted small" style="margin:10px 2px 0">Periode dimulai tanggal ${L.cycleDay} (${dateText(s)} – ${dateText(addDays(e, -1))}).</p>
     <div class="h2">Transaksi terbaru</div>
-    ${recent.length ? `<div class="card">${recent.map(entryRow).join('')}</div>` : '<div class="empty"><b>Mulai catat keuangan Anda</b>Tambahkan saldo awal dompet, lalu catat pemasukan dan pengeluaran.</div>'}`;
-}
-function txEntries() {
-  const t = ui.tx; const s = startOfDay(fromDateInput(t.start)), e = addDays(startOfDay(fromDateInput(t.end)), 1); const q = t.search.toLowerCase();
-  return L.entries.filter(x => (t.kind === 'Semua' || x.kind === t.kind) && (!t.wallet || x.wallet === t.wallet || x.destination === t.wallet)
-    && (!t.limited || (new Date(x.date) >= s && new Date(x.date) < e))
-    && (!q || ((x.note || '') + categoryName(L, x.category) + walletName(L, x.wallet)).toLowerCase().includes(q))).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+    ${recent.length ? `<div class="card">${recent.map(entryRow).join('')}</div>` : '<div class="empty"><b>Mulai catat keuangan Anda</b>Klik Tambah untuk mencatat pemasukan atau pengeluaran.</div>'}`;
 }
 function vTransactions() {
-  const t = ui.tx; const es = txEntries();
-  return `<div class="row"><input id="tx-search" type="search" class="grow" placeholder="Cari catatan, kategori, dompet…" value="${esc(t.search)}" data-bind="tx.search">
-      <label class="row" style="gap:6px">Jenis <select data-bind="tx.kind">${['Semua', ...KINDS].map(k => opt(k, k, t.kind === k)).join('')}</select></label>
-      <label class="row" style="gap:6px">Dompet <select data-bind="tx.wallet">${opt('', 'Semua', !t.wallet)}${L.wallets.map(w => opt(w.id, w.name, t.wallet === w.id)).join('')}</select></label></div>
-    <div class="row" style="margin:12px 0 6px"><label class="chk"><input type="checkbox" data-bind="tx.limited" ${t.limited ? 'checked' : ''}> Filter tanggal</label>
-      ${t.limited ? `<label class="row" style="gap:6px">Dari <input type="date" value="${t.start}" data-bind="tx.start"></label><label class="row" style="gap:6px">Sampai <input type="date" value="${t.end}" data-bind="tx.end"></label>` : ''}
-      <span class="grow"></span><span class="muted">${es.length} transaksi</span></div>
-    <div>${es.slice(0, t.limit).map(entryRow).join('') || '<div class="empty">Tidak ada transaksi.</div>'}</div>
-    ${es.length > t.limit ? `<div style="text-align:center;margin-top:14px"><button class="btn" data-a="more">Tampilkan ${Math.min(300, es.length - t.limit)} lagi</button></div>` : ''}`;
-}
-function vWallets() {
-  const w = ui.wal;
-  return `<div class="row"><input type="text" id="w-name" class="grow" placeholder="Nama dompet" value="${esc(w.name)}" data-bind="wal.name"><input type="text" id="w-open" inputmode="numeric" placeholder="Saldo awal" style="width:170px" value="${esc(w.opening)}" data-bind="wal.opening">
-      <label class="chk"><input type="checkbox" data-bind="wal.negative" ${w.negative ? 'checked' : ''}> Negatif</label><button class="btn primary" data-a="wsave">${w.id ? 'Simpan' : 'Tambah'}</button>${w.id ? '<button class="btn" data-a="wcancel">Batal</button>' : ''}</div>
-    <p class="muted small">Saldo awal adalah saldo sebelum transaksi pertama. Transfer antar-dompet tidak dihitung sebagai pemasukan/pengeluaran.</p>
-    ${L.wallets.map(x => `<div class="list-item"><div class="grow"><div class="bold">${esc(x.name)}</div><div class="muted">Saldo awal: ${money(x.opening)}</div></div><div class="bold" style="font-size:16px">${money(balance(L, x.id))}</div><button class="btn" data-a="wedit" data-id="${x.id}">Edit</button><button class="btn danger" data-a="wdel" data-id="${x.id}">Hapus</button></div>`).join('')}`;
+  const d0 = startOfDay(ui.day), d1 = addDays(d0, 1); const today = startOfDay(new Date());
+  const es = L.entries.filter(x => { const d = new Date(x.date); return d >= d0 && d < d1; }).sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+  const out = es.filter(x => x.kind === 'Pengeluaran').reduce((a, x) => a + x.amount, 0), inc = es.filter(x => x.kind === 'Pemasukan').reduce((a, x) => a + x.amount, 0);
+  return `<div class="daybar"><button class="btn day-nav" data-a="dprev" aria-label="Hari sebelumnya">‹</button>
+      <div class="day-title"><div class="bold">${dayTitle(d0)}</div><div class="muted small">${+d0 === +today ? 'Hari ini' : +d0 === +addDays(today, -1) ? 'Kemarin' : es.length + ' transaksi'}</div></div>
+      <button class="btn day-nav" data-a="dnext" aria-label="Hari berikutnya">›</button></div>
+    <div class="row" style="justify-content:center;margin:10px 0 18px"><input type="date" value="${dateInput(d0)}" data-a-change="dpick" aria-label="Pilih tanggal">${+d0 !== +today ? '<button class="btn" data-a="dtoday">Hari ini</button>' : ''}</div>
+    <div class="metrics two">${metric('Pengeluaran', out, '↗', true)}${metric('Pemasukan', inc, '↙')}</div>
+    <div class="card" style="margin-top:18px">${es.length ? es.map(e => entryRow(e, true)).join('') : '<div class="empty"><b>Belum ada transaksi</b>Tidak ada catatan pada hari ini.</div>'}
+      <button class="btn primary add-day" data-a="new">＋ Tambah transaksi di hari ini</button></div>
+    <p class="muted small" style="text-align:center">Geser kiri/kanan (atau tombol ‹ ›, tombol panah keyboard) untuk berpindah hari.</p>`;
 }
 function vCategories() {
   const c = ui.cat;
@@ -557,7 +576,7 @@ function vReports() {
   const selName = r.selected ? (cats.find(c => c.key === r.selected)?.name ?? 'kategori terpilih') : null;
   const thisMonth = monthStart(new Date());
   return `<div class="row noprint"><div class="seg">${['Bulanan', 'Rentang'].map(m => `<button data-a="rmode" data-m="${m}" class="${r.mode === m ? 'on' : ''}">${m === 'Bulanan' ? 'Bulanan' : 'Rentang waktu'}</button>`).join('')}</div><span class="grow"></span>
-      <label class="row" style="gap:6px">Dompet <select data-bind="rep.wallet">${opt('', 'Semua dompet', !r.wallet)}${L.wallets.map(w => opt(w.id, w.name, r.wallet === w.id)).join('')}</select></label></div>
+</div>
     <div class="row noprint" style="margin:12px 0 20px">${r.mode === 'Bulanan'
       ? `<button class="btn" data-a="rprev" aria-label="Bulan sebelumnya">‹</button><span style="font-size:18px;font-weight:700;min-width:170px;text-align:center">${monthName(r.month)}</span><button class="btn" data-a="rnext" aria-label="Bulan berikutnya" ${+r.month >= +thisMonth ? 'disabled' : ''}>›</button><button class="btn" data-a="rthis">Bulan ini</button>`
       : `<label class="row" style="gap:6px">Dari <input type="date" value="${r.start}" data-bind="rep.start"></label><label class="row" style="gap:6px">Sampai <input type="date" value="${r.end}" data-bind="rep.end"></label>
@@ -565,6 +584,7 @@ function vReports() {
     <div class="metrics">${metric('Pemasukan', income, '↙')}${metric('Pengeluaran', total, '↗', true)}${metric('Selisih', income - total, '↗')}</div>
     <div class="card" style="margin-top:22px">${categorySection(cats, total, title)}</div>
     <div class="card" style="margin-top:22px">${monthSection(months, r.mode === 'Bulanan' ? r.month : null, selName, mEntries)}</div>
+    ${r.mode === 'Bulanan' ? dailySection(entries, r.month) : ''}
     ${r.selected ? selectedList(exps.filter(x => Reports.key(x) === r.selected).sort((a, b) => Date.parse(b.date) - Date.parse(a.date)), selName) : ''}
     <div class="row noprint" style="margin-top:22px;border-top:1px solid var(--line);padding-top:16px"><button class="btn" data-a="xsum">Ekspor ringkasan CSV</button><button class="btn" data-a="xtx">Ekspor transaksi CSV</button><button class="btn" data-a="xpdf">Cetak / PDF</button><span class="grow"></span><span class="muted">${entries.length} transaksi</span></div>`;
 }
@@ -611,6 +631,13 @@ function monthSection(months, highlight, catName, mEntries) {
     let ch = '<span class="muted">—</span>'; if (prev > 0) { const p = (m.total - prev) / prev * 100; ch = `<span class="${p > 0 ? 'red' : 'acc'}">${p > 0 ? '▲ ' : p < 0 ? '▼ ' : ''}${Math.abs(p).toFixed(0)}%</span>`; }
     return `<tr class="click ${hl ? 'hl' : ''}" data-a="rpick" data-m="${+m.month}"><td>${monthName(m.month)}</td><td class="num">${money(m.total)}</td><td class="num muted">${m.count}</td><td class="num">${ch}</td><td class="muted hide-sm">${top ? esc(top.name) + ' · ' + compact(top.total) : '—'}</td></tr>`; }).join('');
   return head + barChart(months, highlight, avg) + `<div class="tablewrap"><table class="months"><thead><tr><th>Bulan</th><th class="num">Pengeluaran</th><th class="num">Transaksi</th><th class="num">vs bulan lalu</th><th class="hide-sm">Kategori terbesar</th></tr></thead><tbody>${rows}</tbody></table></div><p class="muted small noprint">Klik bulan (baris atau batang) untuk membuka laporan bulan tersebut.</p>`;
+}
+function dailySection(entries, month) {
+  const days = new Map(); for (const e of entries) { const k = +startOfDay(e.date); const t = days.get(k) || { out: 0, inc: 0, n: 0 }; if (e.kind === 'Pengeluaran') t.out += e.amount; if (e.kind === 'Pemasukan') t.inc += e.amount; t.n++; days.set(k, t); }
+  const end = Math.min(+addMonths(month, 1), +addDays(startOfDay(new Date()), 1)); const rows = [];
+  for (let d = startOfDay(addDays(end, -1)); d >= month; d = addDays(d, -1)) { const t = days.get(+d); rows.push(`<tr class="click" data-a="openday" data-d="${+d}"><td>${DAYS[d.getDay()].slice(0, 3)}, ${d.getDate()}</td><td class="num ${t?.out ? 'red' : 'muted'}">${t?.out ? money(t.out) : '—'}</td><td class="num ${t?.inc ? 'acc' : 'muted'}">${t?.inc ? money(t.inc) : '—'}</td><td class="num muted">${t?.n || 0}</td></tr>`); }
+  return `<div class="card" style="margin-top:22px"><div class="row" style="margin-bottom:10px"><b style="font-size:17px">Rincian harian</b><span class="muted">${monthName(month)}</span><span class="grow"></span><button class="btn primary noprint" data-a="new">＋ Tambah transaksi</button></div>
+    ${rows.length ? `<div class="tablewrap"><table class="months"><thead><tr><th>Tanggal</th><th class="num">Pengeluaran</th><th class="num">Pemasukan</th><th class="num">Transaksi</th></tr></thead><tbody>${rows.join('')}</tbody></table></div><p class="muted small noprint">Klik tanggal untuk melihat atau menambah transaksi di hari itu.</p>` : '<p class="muted">Bulan ini belum dimulai.</p>'}</div>`;
 }
 function selectedList(es, name) {
   return `<div class="card" style="margin-top:22px"><b style="font-size:17px">Transaksi ${esc(name)} (${es.length})</b>${es.slice(0, 200).map(e => `<div class="list-item" style="padding:7px 0"><span class="muted" style="width:110px;flex:none">${dateText(e.date)}</span><span class="grow" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.note || '—')}</span><span class="red num">− ${money(e.amount)}</span></div>`).join('')}${es.length > 200 ? '<p class="muted small">Menampilkan 200 transaksi terbaru. Gunakan menu Transaksi untuk daftar lengkap.</p>' : ''}</div>`;
@@ -660,16 +687,22 @@ function openDialog(html, onSubmit) {
   setTimeout(() => d.querySelector('input:not([type=hidden]),select')?.focus(), 30);
 }
 const dlgButtons = (ok = 'Simpan') => `<div class="actions"><button class="btn" value="cancel" formnovalidate>Batal</button><button class="btn primary" value="ok">${ok}</button></div>`;
+function defaultEntryDate() {
+  const t = new Date(); const at = d => new Date(d.getFullYear(), d.getMonth(), d.getDate(), t.getHours(), t.getMinutes());
+  if (ui.section === 'Transaksi') return at(ui.day);
+  if (ui.section === 'Laporan' && ui.rep.mode === 'Bulanan' && +ui.rep.month !== +monthStart(t)) return at(ui.rep.month);
+  return t;
+}
 function entryDialog(existing) {
-  let kind = existing?.kind || 'Pengeluaran';
+  let kind = existing?.kind || 'Pengeluaran'; const kinds = kind === 'Transfer' ? KINDS : ['Pengeluaran', 'Pemasukan']; const when = existing ? existing.date : defaultEntryDate();
   let first = true;
   const draw = () => {
     const cats = L.categories.filter(c => c.income === (kind === 'Pemasukan')); const f = first ? null : $('#dlg-form'); first = false; const keep = f ? Object.fromEntries(new FormData(f)) : {};
     const v = (k, d) => keep[k] ?? d;
-    return `<h3>${existing ? 'Edit / ulangi transaksi' : 'Tambah transaksi'}</h3><div class="seg" style="margin-bottom:16px">${KINDS.map(k => `<button type="button" data-kind="${k}" class="${k === kind ? 'on' : ''}">${k}</button>`).join('')}</div>
+    return `<h3>${existing ? 'Edit / ulangi transaksi' : 'Tambah transaksi'}</h3><div class="seg" style="margin-bottom:16px">${kinds.map(k => `<button type="button" data-kind="${k}" class="${k === kind ? 'on' : ''}">${k}</button>`).join('')}</div>
       <div class="form"><label>Nominal</label><input name="amount" inputmode="numeric" placeholder="Rupiah tanpa pemisah" value="${esc(v('amount', existing ? existing.amount : ''))}">
-      <label>Tanggal dan waktu</label><input name="date" type="datetime-local" value="${esc(v('date', dtInput(existing ? existing.date : new Date())))}">
-      <label>Dompet</label><select name="wallet">${L.wallets.map(w => opt(w.id, w.name, v('wallet', existing?.wallet || L.wallets[0].id) === w.id)).join('')}</select>
+      <label>Tanggal dan waktu</label><input name="date" type="datetime-local" value="${esc(v('date', dtInput(when)))}">
+      ${kind === 'Transfer' ? `<label>Dompet</label><select name="wallet">${L.wallets.map(w => opt(w.id, w.name, v('wallet', existing?.wallet) === w.id)).join('')}</select>` : `<input type="hidden" name="wallet" value="${esc(existing?.wallet || defaultWallet())}">`}
       ${kind === 'Transfer' ? `<label>Dompet tujuan</label><select name="destination">${opt('', 'Pilih dompet')}${L.wallets.map(w => opt(w.id, w.name, v('destination', existing?.destination) === w.id)).join('')}</select>`
         : `<label>Kategori</label><select name="category">${opt('', 'Tanpa kategori')}${cats.map(c => opt(c.id, c.name, v('category', existing?.category) === c.id)).join('')}</select>`}
       <label>Catatan</label><input name="note" value="${esc(v('note', existing?.note || ''))}"></div>${dlgButtons()}`;
@@ -679,7 +712,7 @@ function entryDialog(existing) {
     const e = { id: existing?.id || uuid(), date: iso(d), kind, amount, wallet: w, note: String(fd.get('note') || '') };
     if (kind === 'Transfer') { const dest = fd.get('destination'); if (!dest) fail('Pilih dompet tujuan.'); if (dest === w) fail('Dompet tujuan harus berbeda.'); e.destination = dest; }
     else if (fd.get('category')) e.category = fd.get('category');
-    commit(upsert(L, e));
+    commit(upsert(L, e)); if (ui.section === 'Transaksi') ui.day = startOfDay(d);
   });
   dlg().onclick = ev => { const b = ev.target.closest('[data-kind]'); if (!b) return; kind = b.dataset.kind; const f = $('#dlg-form'); const html = draw(); f.innerHTML = html + '<div class="err" id="dlg-err"></div>'; };
 }
@@ -690,7 +723,7 @@ function debtDialog() {
     n.debts.push({ id: uuid(), name, receivable: fd.get('rec') === '1', amount: parseAmount(fd.get('amount')), date: iso(fromDateInput(fd.get('date'))), due: iso(fromDateInput(fd.get('due'))), note: String(fd.get('note') || ''), payments: [] }); commit(n); });
 }
 function payDialog(d) {
-  openDialog(`<h3>Pembayaran: ${esc(d.name)}</h3><p>Sisa ${money(remaining(d))}</p><div class="form"><label>Nominal</label><input name="amount" inputmode="numeric" value="${remaining(d)}"><label>Dompet</label><select name="wallet">${L.wallets.map(w => opt(w.id, w.name)).join('')}</select></div>${dlgButtons('Simpan pembayaran')}`,
+  openDialog(`<h3>Pembayaran: ${esc(d.name)}</h3><p>Sisa ${money(remaining(d))}</p><div class="form"><label>Nominal</label><input name="amount" inputmode="numeric" value="${remaining(d)}"><input type="hidden" name="wallet" value="${defaultWallet()}"></div>${dlgButtons('Simpan pembayaran')}`,
     fd => commit(pay(L, d.id, parseAmount(fd.get('amount')), fd.get('wallet'))));
 }
 function confirmDialog(title, text, okLabel, action) { openDialog(`<h3>${esc(title)}</h3><p>${esc(text)}</p>${dlgButtons(okLabel)}`, action); }
@@ -740,6 +773,8 @@ const A = {
     const salt = uuid(); ls.set('pin', JSON.stringify({ salt, hash: await hashPin(a, salt) })); ui.msg = 'PIN tersimpan di browser ini.'; },
   pinoff: () => { ls.del('pin'); ui.msg = 'PIN dinonaktifkan.'; },
   logout: () => logout(),
+  dprev: () => { ui.day = addDays(ui.day, -1); }, dnext: () => { ui.day = addDays(ui.day, 1); }, dtoday: () => { ui.day = startOfDay(new Date()); },
+  openday: b => { ui.day = new Date(Number(b.dataset.d)); ui.section = 'Transaksi'; window.scrollTo(0, 0); },
   unlock: async () => { const p = JSON.parse(ls.get('pin') || 'null'); const v = $('#pin-in').value; if (!p || await hashPin(v, p.salt) === p.hash) { ui.locked = false; reminder(); } else { $('#pin-err').textContent = 'PIN salah.'; $('#pin-in').value = ''; throw null; } },
   bsave: () => download(backupName(), backupJSON(), 'application/json'),
   bopen: () => pickFile('.json,application/json', async f => { let l; try { l = JSON.parse(await f.text()); } catch { fail('Berkas backup tidak dapat dibaca.'); } previewRestore(l, `Backup "${f.name}"`); }),
@@ -758,6 +793,7 @@ const A = {
   }
 };
 const CHANGE = {
+  dpick: el => { if (el.value) ui.day = fromDateInput(el.value); },
   theme: el => { ls.set('appearance', el.value); applyTheme(); },
   weekly: el => { ls.set('weeklyMail', el.checked ? '1' : '0'); },
   rpreset: el => { const r = ui.rep, t = new Date(); const v = el.value; if (!v) return;
@@ -774,7 +810,8 @@ document.addEventListener('click', ev => {
 });
 document.addEventListener('change', ev => { const el = ev.target; if (el.dataset.aChange) run(() => CHANGE[el.dataset.aChange](el)); else if (el.dataset.bind && el.type !== 'text' && el.type !== 'search') bind(el); });
 document.addEventListener('input', ev => { const el = ev.target; if (el.dataset.bind && (el.type === 'text' || el.type === 'search')) bind(el); });
-document.addEventListener('keydown', ev => { if (ev.key === 'Enter' && ev.target.id === 'pin-in') run(A.unlock); if (ev.key === 'Escape' && ui.menu) { ui.menu = null; render(); } });
+document.addEventListener('keydown', ev => {
+  if (USER && !ui.locked && ui.section === 'Transaksi' && !dlg().open && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '') && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) { run(ev.key === 'ArrowLeft' ? A.dprev : A.dnext); return; } if (ev.key === 'Enter' && ev.target.id === 'pin-in') run(A.unlock); if (ev.key === 'Escape' && ui.menu) { ui.menu = null; render(); } });
 function bind(el) {
   const [o, k] = el.dataset.bind.split('.'); ui[o][k] = el.type === 'checkbox' ? el.checked : el.value;
   if (o === 'rep' && k === 'wallet') ui.rep.selected = null; if (o === 'tx') ui.tx.limit = 300;
@@ -783,6 +820,10 @@ function bind(el) {
 }
 document.addEventListener('submit', ev => { if (ev.target.id !== 'gate-form') return; ev.preventDefault(); const btn = ev.target.querySelector('button'); const v = $('#user-in').value; btn.disabled = true; btn.textContent = 'Membuka…';
   login(v).then(render, e => { USER = null; L = null; btn.disabled = false; btn.textContent = 'Masuk'; $('#gate-err').textContent = e.message; }); });
+let touch = null;
+document.addEventListener('touchstart', ev => { touch = ui.section === 'Transaksi' && ev.target.closest('#view') ? [ev.touches[0].clientX, ev.touches[0].clientY] : null; }, { passive: true });
+document.addEventListener('touchend', ev => { if (!touch) return; const dx = ev.changedTouches[0].clientX - touch[0], dy = ev.changedTouches[0].clientY - touch[1]; touch = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) run(dx < 0 ? A.dnext : A.dprev); }, { passive: true });
 document.addEventListener('visibilitychange', () => { if (document.hidden && USER && ls.get('pin') && !ui.locked) { ui.locked = true; if (dlg().open) dlg().close(); render(); } });
 boot();
 </script>
