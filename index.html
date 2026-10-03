@@ -213,6 +213,7 @@ dialog.wide:not([open]){display:none}
   .card-h{flex-wrap:wrap}
 }
 @media (max-width:820px){.metrics:not(.two) .metric .v{font-size:13.5px;white-space:normal;overflow:visible;word-break:break-word;line-height:1.25}.metrics:not(.two) .metric{padding:11px 10px}}
+@media (max-width:820px){table.months th,table.months td{padding:7px 5px;font-size:13.5px}table.months .chev{width:10px;padding-left:0}}
 </style>
 </head>
 <body>
@@ -676,8 +677,10 @@ function vReports() {
   const entries = L.entries.filter(x => new Date(x.date) >= s && new Date(x.date) < e);
   const exps = Reports.expenses(L, s, e); const cats = Reports.byCategory(L, exps); const total = cats.reduce((a, c) => a + c.total, 0);
   const income = entries.filter(x => x.kind === 'Pemasukan').reduce((a, x) => a + x.amount, 0);
-  const [ws, we] = r.mode === 'Bulanan' ? [addMonths(r.month, -11), addMonths(r.month, 1)] : [monthStart(s), e];
-  const months = Reports.byMonth(Reports.expenses(L, ws, we), ws, we);
+  const allExp = L.entries.filter(x => x.kind === 'Pengeluaran'); const first = allExp.length ? monthStart(new Date(Math.min(...allExp.map(x => Date.parse(x.date))))) : monthStart(new Date());
+  const ws = first, we = addMonths(monthStart(new Date(Math.max(Date.now(), ...allExp.map(x => Date.parse(x.date))))), 1);
+  const months = Reports.byMonth(allExp, ws, we);
+  const years = []; for (let y = ws.getFullYear(); y <= addMonths(we, -1).getFullYear(); y++) { const ys = new Date(y, 0, 1), ye = new Date(y + 1, 0, 1); const es = allExp.filter(x => { const d = new Date(x.date); return d >= ys && d < ye; }); years.push({ month: ys, year: y, total: es.reduce((a, x) => a + x.amount, 0), count: es.length, months: months.filter(m => m.month.getFullYear() === y && m.total > 0).length }); }
   const title = r.mode === 'Bulanan' ? monthName(r.month) : `${dateText(s)} – ${dateText(addDays(e, -1))}`;
   ui._report = { cats, months, title, entries, s, e };
   const thisMonth = monthStart(new Date());
@@ -689,7 +692,8 @@ function vReports() {
     <div class="metrics">${metric('Pengeluaran', total, '↗', true, 'rep-out')}${metric('Pemasukan', income, '↙', false, 'rep-in')}${metric('Selisih', income - total, '=', false, 'rep-all')}</div>
     <div class="card" style="margin-top:18px">${categorySection(cats, total, title)}</div>
     ${r.mode === 'Bulanan' ? dailySection(entries, r.month) : ''}
-    <div class="card" style="margin-top:18px">${monthSection(months, r.mode === 'Bulanan' ? r.month : null)}</div>`;
+    <div class="card" style="margin-top:18px">${monthSection(months, r.mode === 'Bulanan' ? r.month : null)}</div>
+    <div class="card" style="margin-top:18px">${yearSection(years, (r.mode === 'Bulanan' ? r.month : s).getFullYear())}</div>`;
 }
 function categorySection(cats, total, title) {
   const head = `<div class="card-h"><b>Pengeluaran per kategori</b><span class="muted">${esc(title)}</span></div>`;
@@ -712,26 +716,39 @@ function donut(slices, total, color, sel) { sel = null;
   return `<svg width="220" height="220" viewBox="0 0 220 220" role="img" aria-label="Grafik pengeluaran per kategori">${paths}<text x="110" y="104" text-anchor="middle" class="chart-x" style="font-size:12px">Total</text><text x="110" y="126" text-anchor="middle" style="font-size:19px;font-weight:700;fill:var(--ink)">${compact(total)}</text></svg>`;
 }
 function niceStep(max) { const raw = max / 3; const p = Math.pow(10, Math.floor(Math.log10(raw || 1))); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p; }
-function barChart(months, highlight, avg) {
-  const W = 820, H = 240, padL = 8, padR = 56, padT = 10, padB = 26; const max = Math.max(1, ...months.map(m => m.total)); const step = niceStep(max); const top = Math.ceil(max / step) * step;
+function barChart(months, highlight, avg, o = {}) {
+  const lab = o.label || (m => monthName(m.month, true)), tip = o.tip || (m => monthName(m.month)), attr = o.attr || (m => `data-what="month" data-m="${+m.month}"`);
+  const sm = window.innerWidth < 820; const W = sm ? 400 : 820, H = sm ? 210 : 240, padL = 4, padR = sm ? 56 : 56, padT = 10, padB = 26; const max = Math.max(1, ...months.map(m => m.total)); const step = niceStep(max); const top = Math.ceil(max / step) * step;
   const iw = W - padL - padR, ih = H - padT - padB; const bw = iw / months.length; const y = v => padT + ih - v / top * ih;
   let g = ''; for (let v = 0; v <= top + 1; v += step) g += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${W - padR + 6}" y="${y(v) + 4}" class="chart-x">${compact(v)}</text>`;
-  const every = Math.max(1, Math.ceil(months.length / 12));
+  const every = Math.max(1, Math.ceil(months.length / (sm ? 6 : 12)));
   const bars = months.map((m, i) => { const x = padL + i * bw + bw * 0.14, w = bw * 0.72, h = Math.max(m.total ? 1.5 : 0, ih - (y(m.total) - padT)); const hl = highlight && +highlight === +m.month;
-    return `<rect x="${x.toFixed(1)}" y="${(padT + ih - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${hl ? 'var(--red)' : 'var(--accent)'}" opacity="${hl ? 1 : .78}" data-a="detail" data-what="month" data-m="${+m.month}" style="cursor:pointer"><title>${monthName(m.month)}: ${money(m.total)} (${m.count} transaksi)</title></rect>`
-      + (i % every === 0 ? `<text x="${(x + w / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" class="chart-x">${monthName(m.month, true)}</text>` : ''); }).join('');
+    return `<rect x="${x.toFixed(1)}" y="${(padT + ih - h).toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${hl ? 'var(--red)' : 'var(--accent)'}" opacity="${hl ? 1 : .78}" data-a="detail" ${attr(m)} style="cursor:pointer"><title>${tip(m)}: ${money(m.total)} (${m.count} transaksi)</title></rect>`
+      + (i % every === 0 ? `<text x="${(x + w / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" class="chart-x">${lab(m)}</text>` : ''); }).join('');
   const avgLine = avg > 0 ? `<line x1="${padL}" x2="${W - padR}" y1="${y(avg)}" y2="${y(avg)}" stroke="var(--muted)" stroke-dasharray="4 3"/>` : '';
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Grafik pengeluaran per bulan">${g}${bars}${avgLine}</svg>`;
 }
 function monthSection(months, highlight) {
   const active = months.filter(m => m.total > 0); const avg = active.length ? Math.floor(active.reduce((a, m) => a + m.total, 0) / active.length) : 0;
-  const head = `<div class="card-h"><b>Pengeluaran per bulan</b><span class="grow"></span><span class="muted">Rata-rata ${money(avg)}</span></div>`;
+  const head = `<div class="card-h"><b>Pengeluaran per bulan</b><span class="muted">semua data · ${months.length} bulan</span><span class="grow"></span><span class="muted">Rata-rata ${money(avg)}</span></div>`;
   if (months.every(m => !m.total)) return head + '<p class="muted">Belum ada pengeluaran pada bulan-bulan ini.</p>';
   const rows = months.map((m, i) => ({ m, prev: i > 0 ? months[i - 1].total : 0 })).reverse().map(({ m, prev }) => {
     const hl = highlight && +highlight === +m.month;
     let ch = '<span class="muted">—</span>'; if (prev > 0) { const p = (m.total - prev) / prev * 100; ch = `<span class="${p > 0 ? 'red' : 'acc'}">${p > 0 ? '▲' : p < 0 ? '▼' : ''} ${Math.abs(p).toFixed(0)}%</span>`; }
-    return `<tr class="click ${hl ? 'hl' : ''}" data-a="detail" data-what="month" data-m="${+m.month}"><td>${monthName(m.month)}</td><td class="num">${money(m.total)}</td><td class="num muted hide-sm">${m.count}</td><td class="num">${ch}</td><td class="chev">›</td></tr>`; }).join('');
-  return head + barChart(months, highlight, avg) + `<div class="tablewrap"><table class="months"><thead><tr><th>Bulan</th><th class="num">Pengeluaran</th><th class="num hide-sm">Transaksi</th><th class="num">vs bulan lalu</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    return `<tr class="click ${hl ? 'hl' : ''}" data-a="detail" data-what="month" data-m="${+m.month}"><td>${monthName(m.month)}</td><td class="num">${money(m.total)}</td><td class="num muted hide-sm">${m.count}</td><td class="num hide-sm">${ch}</td><td class="chev">›</td></tr>`; }).join('');
+  return head + barChart(months, highlight, avg) + `<div class="tablewrap daily"><table class="months"><thead><tr><th>Bulan</th><th class="num">Pengeluaran</th><th class="num hide-sm">Transaksi</th><th class="num hide-sm">vs bulan lalu</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function yearSection(years, highlight) {
+  const total = years.reduce((a, y) => a + y.total, 0);
+  const head = `<div class="card-h"><b>Pengeluaran per tahun</b><span class="grow"></span><span class="muted">Total ${money(total)}</span></div>`;
+  if (!total) return head + '<p class="muted">Belum ada pengeluaran.</p>';
+  const avgY = Math.floor(total / Math.max(1, years.filter(y => y.total).length));
+  const rows = years.map((y, i) => ({ y, prev: i > 0 ? years[i - 1].total : 0 })).reverse().map(({ y, prev }) => {
+    let ch = '<span class="muted">—</span>'; if (prev > 0) { const p = (y.total - prev) / prev * 100; ch = `<span class="${p > 0 ? 'red' : 'acc'}">${p > 0 ? '▲' : p < 0 ? '▼' : ''} ${Math.abs(p).toFixed(0)}%</span>`; }
+    return `<tr class="click ${y.year === highlight ? 'hl' : ''}" data-a="detail" data-what="year" data-y="${y.year}"><td>${y.year}</td><td class="num">${money(y.total)}</td><td class="num muted hide-sm">${y.count}</td><td class="num muted">${y.months ? money(Math.floor(y.total / y.months)) : '—'}</td><td class="num hide-sm">${ch}</td><td class="chev">›</td></tr>`; }).join('');
+  return head + barChart(years, new Date(highlight, 0, 1), avgY, { label: y => String(y.year), tip: y => `Tahun ${y.year}`, attr: y => `data-what="year" data-y="${y.year}"` })
+    + `<div class="tablewrap"><table class="months"><thead><tr><th>Tahun</th><th class="num">Pengeluaran</th><th class="num hide-sm">Transaksi</th><th class="num">Rata-rata/bulan</th><th class="num hide-sm">vs tahun lalu</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="muted small">Rata-rata/bulan dihitung dari bulan yang ada pengeluarannya.</p>`;
 }
 function dailySection(entries, month) {
   const days = new Map(); for (const e of entries) { const k = +startOfDay(e.date); const t = days.get(k) || { out: 0, inc: 0, n: 0 }; if (e.kind === 'Pengeluaran') t.out += e.amount; if (e.kind === 'Pemasukan') t.inc += e.amount; t.n++; days.set(k, t); }
@@ -753,6 +770,7 @@ function detailFor(b) {
     case 'rep-all': return { title: `Semua transaksi · ${R.title}`, es: R.entries };
     case 'cat': { const c = R.cats.find(x => x.key === b.dataset.k); return { title: `${c?.name ?? 'Kategori'} · ${R.title}`, es: R.entries.filter(x => x.kind === 'Pengeluaran' && Reports.key(x) === b.dataset.k) }; }
     case 'month': { const m = new Date(Number(b.dataset.m)); return { title: `Pengeluaran · ${monthName(m)}`, es: Reports.expenses(L, m, addMonths(m, 1)), month: m }; }
+    case 'year': { const y = Number(b.dataset.y); return { title: `Pengeluaran · Tahun ${y}`, es: Reports.expenses(L, new Date(y, 0, 1), new Date(y + 1, 0, 1)) }; }
     case 'day': { const d = new Date(Number(b.dataset.d)); return { title: dayTitle(d), es: inRange(d, addDays(d, 1)), day: d }; }
     case 'pr-all': return { title: `Transaksi · ${printTitle()}`, es: printReport().entries };
     case 'pr-cat': { const r = printReport(); return { title: `${r.cats.find(x => x.key === b.dataset.k)?.name ?? 'Kategori'} · ${printTitle()}`, es: r.entries.filter(x => x.kind === 'Pengeluaran' && Reports.key(x) === b.dataset.k) }; }
@@ -977,6 +995,7 @@ document.addEventListener('touchstart', ev => { touch = ui.section === 'Transaks
 document.addEventListener('touchend', ev => { if (!touch) return; const dx = ev.changedTouches[0].clientX - touch[0], dy = ev.changedTouches[0].clientY - touch[1]; touch = null;
   if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) run(dx < 0 ? A.dnext : A.dprev); }, { passive: true });
 document.addEventListener('visibilitychange', () => { if (document.hidden && USER && ls.get('pin') && !ui.locked) { ui.locked = true; if (dlg().open) dlg().close(); render(); } });
+let lastSm = window.innerWidth < 820; window.addEventListener('resize', () => { const sm = window.innerWidth < 820; if (sm !== lastSm && USER && !ui.locked) { lastSm = sm; render(); } });
 boot();
 </script>
 </body>
