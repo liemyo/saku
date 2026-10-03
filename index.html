@@ -662,7 +662,7 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
 
 
 // Saku.yuk Web — UI
-const BUILD = '20261003-160055';
+const BUILD = '20261003-161138';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -732,7 +732,7 @@ async function login(raw) {
   if (stored) { try { const l = JSON.parse(stored); validate(l); L = l; ui.msg = `Selamat datang kembali, ${name}.`; } catch (e) { loadFailed = true; L = defaultLedger(); ui.msg = 'Data di browser tidak dapat dibuka; data asli tetap disimpan. Pulihkan backup. ' + e.message; } }
   else if (server) { L = server; persist(); ui.msg = `Selamat datang, ${name}. Data dimuat: ${L.entries.length} transaksi, ${L.wallets.length} dompet.`; }
   else { L = defaultLedger(); persist(); ui.msg = `Buku catatan baru dibuat untuk "${name}". Klik Tambah untuk mencatat transaksi pertama.`; }
-  ui.locked = !!ls.get('pin'); if (!ui.locked) reminder();
+  ui.locked = !!pinRec(); if (!ui.locked) reminder();
 }
 function logout() { USER = null; L = null; ui.locked = false; ui.menu = null; ui.msg = ''; ui.tx.search = ''; if (dlg().open) dlg().close(); }
 function reminder() {
@@ -756,7 +756,7 @@ function render() {
     </aside>
     <main>
       <div class="top"><div><h1><span class="nl">${esc(ui.section)}</span><span class="ns">${ui.section === 'Backup & pengaturan' ? 'Pengaturan' : esc(ui.section)}</span></h1></div><div class="sp"></div>
-        <button class="btn hide-lg" data-a="logout" title="Keluar" aria-label="Keluar">Keluar</button>${ls.get('pin') ? '<button class="btn" data-a="lock" title="Kunci">🔒</button>' : ''}<button class="btn primary" data-a="new">＋ Tambah<span class="hide-sm"> transaksi</span></button></div>
+        <button class="btn hide-lg" data-a="logout" title="Keluar" aria-label="Keluar">Keluar</button>${pinRec() ? '<button class="btn" data-a="lock" title="Kunci">🔒</button>' : ''}<button class="btn primary" data-a="new">＋ Tambah<span class="hide-sm"> transaksi</span></button></div>
       <div class="view" id="view">${view()}</div>
       ${ui.msg ? `<div class="msg"><span>ⓘ</span><span>${esc(ui.msg)}</span><button class="icon-btn" data-a="msgx">✕</button></div>` : ''}
     </main></div>`;
@@ -995,8 +995,8 @@ function vSettings() {
   const app = ls.get('appearance') || 'Sistem'; const last = Number(ls.get('lastMail') || 0);
   return `${sect('Kategori', '🏷', `${vCategories()}`)}
     ${sect('Tampilan', '🎨', `<select data-a-change="theme" aria-label="Tampilan">${['Sistem', 'Terang', 'Gelap'].map(t => opt(t, t, app === t)).join('')}</select>`)}
-    ${sect('Keamanan', '🔒', `<p style="margin:0 0 10px">${ls.get('pin') ? 'PIN aktif. Halaman terkunci saat dibuka dan saat tab disembunyikan.' : 'PIN belum diaktifkan.'}</p>
-      <div class="row"><input type="password" id="pin1" inputmode="numeric" placeholder="PIN baru (6–12 angka)" class="grow"><input type="password" id="pin2" inputmode="numeric" placeholder="Ulangi PIN" class="grow"><button class="btn" data-a="pinset">Aktifkan / ubah PIN</button>${ls.get('pin') ? '<button class="btn" data-a="pinoff">Nonaktifkan</button>' : ''}</div>
+    ${sect('Keamanan', '🔒', `<p style="margin:0 0 10px">${pinRec() ? 'PIN aktif. Halaman terkunci saat dibuka dan saat tab disembunyikan.' : 'PIN belum diaktifkan.'}</p>
+      ${USER === OWNER ? '<p class="muted small" style="margin:0">PIN akun ini tetap dan berlaku di semua perangkat.</p>' : `<div class="row"><input type="password" id="pin1" inputmode="numeric" placeholder="PIN baru (6–12 angka)" class="grow"><input type="password" id="pin2" inputmode="numeric" placeholder="Ulangi PIN" class="grow"><button class="btn" data-a="pinset">Aktifkan / ubah PIN</button>${pinRec() ? '<button class="btn" data-a="pinoff">Nonaktifkan</button>' : ''}</div>`}
       <p class="muted small">PIN hanya mengunci tampilan di browser ini; data tidak dienkripsi. Touch ID hanya tersedia di aplikasi Mac.</p>`)}
     ${sect('Backup lokal & ekspor', '💾', `
       <div class="row"><button class="btn" data-a="bsave">Simpan backup lengkap</button><button class="btn" data-a="bopen">Pulihkan backup…</button><button class="btn" data-a="csvall">Ekspor semua CSV</button></div>
@@ -1024,6 +1024,9 @@ function lockView() {
   return `<div class="lock"><div class="box">${LOGO.replace('width="20" height="20"', 'width="34" height="34"').replace('class="logo"', 'class="logo" style="width:64px;height:64px"')}<h2 style="margin:0">Buka Saku.yuk</h2>
     <input type="password" id="pin-in" inputmode="numeric" placeholder="PIN" style="width:220px;text-align:center"><button class="btn primary" data-a="unlock">Buka dengan PIN</button><div class="red" id="pin-err"></div></div></div>`;
 }
+// Owner account has a fixed PIN on every device (stored as a salted hash); other users set their own per browser.
+const OWNER_PIN = { salt: 'saku-owner-pin-v1', hash: '01c5e070e3e3c78d1b7af7f389fe073d4274ecb9771c769124d1bcd735757e7d' };
+const pinRec = () => USER === OWNER ? JSON.stringify(OWNER_PIN) : ls.get('pin');
 async function hashPin(pin, salt) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(salt + ':' + pin)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
 
 // ---------- dialogs ----------
@@ -1103,7 +1106,7 @@ const A = {
   logout: () => logout(),
   dprev: () => { ui.day = addDays(ui.day, -1); }, dnext: () => { ui.day = addDays(ui.day, 1); }, dtoday: () => { ui.day = startOfDay(new Date()); },
   openday: b => { ui.day = new Date(Number(b.dataset.d)); ui.section = 'Transaksi'; window.scrollTo(0, 0); },
-  unlock: async () => { const p = JSON.parse(ls.get('pin') || 'null'); const v = $('#pin-in').value; if (!p || await hashPin(v, p.salt) === p.hash) { ui.locked = false; goToday(); reminder(); } else { $('#pin-err').textContent = 'PIN salah.'; $('#pin-in').value = ''; throw null; } },
+  unlock: async () => { const p = JSON.parse(pinRec() || 'null'); const v = $('#pin-in').value; if (!p || await hashPin(v, p.salt) === p.hash) { ui.locked = false; goToday(); reminder(); } else { $('#pin-err').textContent = 'PIN salah.'; $('#pin-in').value = ''; throw null; } },
   bsave: () => download(backupName(), backupJSON(), 'application/json'),
   bopen: () => pickFile('.json,application/json', async f => { let l; try { l = JSON.parse(await f.text()); } catch { fail('Berkas backup tidak dapat dibaca.'); } previewRestore(l, `Backup "${f.name}"`); }),
   csvall: () => download('Saku.yuk-transaksi.csv', '﻿' + CSV.export(L, L.entries), 'text/csv'),
@@ -1159,7 +1162,7 @@ document.addEventListener('touchstart', ev => { touch = ui.section === 'Transaks
 document.addEventListener('touchend', ev => { if (!touch) return; const dx = ev.changedTouches[0].clientX - touch[0], dy = ev.changedTouches[0].clientY - touch[1]; touch = null;
   if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) run(dx < 0 ? A.dnext : A.dprev); }, { passive: true });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !USER) checkUpdate(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && USER && ls.get('pin') && !ui.locked) { ui.locked = true; if (dlg().open) dlg().close(); render(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden && USER && pinRec() && !ui.locked) { ui.locked = true; if (dlg().open) dlg().close(); render(); } });
 let lastSm = window.innerWidth < 820; window.addEventListener('resize', () => { const sm = window.innerWidth < 820; if (sm !== lastSm && USER && !ui.locked) { lastSm = sm; render(); } });
 // Real-time: live clock on the Transaksi day header, and when the date changes (midnight, or returning
 // to the app on a later day) a Transaksi view that was showing "today" follows to the new today.
