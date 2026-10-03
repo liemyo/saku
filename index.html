@@ -487,7 +487,9 @@ const Users = {
   valid: s => /^[a-z0-9._-]{3,32}$/.test(s),
   b64: u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }, unb64: s => Uint8Array.from(atob(s), c => c.charCodeAt(0)),
   async fileId(name) { const b = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('sakumac-id:' + name))); return [...b.slice(0, 16)].map(x => x.toString(16).padStart(2, '0')).join(''); },
-  async key(name) { const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(name), 'PBKDF2', false, ['deriveKey']);
+  _keys: new Map(),
+  key(name) { if (!Users._keys.has(name)) Users._keys.set(name, Users.deriveKey(name)); return Users._keys.get(name); },
+  async deriveKey(name) { const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(name), 'PBKDF2', false, ['deriveKey']);
     return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: new TextEncoder().encode('sakumac-key-v1'), iterations: 250000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); },
   async encrypt(name, text) { const iv = crypto.getRandomValues(new Uint8Array(12)); const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await Users.key(name), new TextEncoder().encode(text))); return JSON.stringify({ v: 1, iv: Users.b64(iv), ct: Users.b64(ct) }); },
   async decrypt(name, json) { const o = typeof json === 'string' ? JSON.parse(json) : json; const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: Users.unb64(o.iv) }, await Users.key(name), Users.unb64(o.ct)); return new TextDecoder().decode(pt); }
@@ -673,12 +675,17 @@ function merge3(base, a, b) {
     }
     out[k] = res;
   }
+  if (!base) { // first sync of a device: keep its own wallets/categories only when its new entries use them (no duplicate defaults)
+    const remoteIds = new Set((b.entries || []).map(e => e.id)), used = new Set();
+    for (const e of a.entries || []) if (!remoteIds.has(e.id)) [e.wallet, e.destination, e.category].forEach(x => x && used.add(x));
+    for (const k of ['wallets', 'categories']) { const r = new Set((b[k] || []).map(x => x.id)); out[k] = out[k].filter(x => r.has(x.id) || used.has(x.id)); }
+  }
   return out;
 }
 
 
 // Saku.yuk Web — UI
-const BUILD = '20261003-163032';
+const BUILD = '20261003-170232';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -752,9 +759,9 @@ async function login(raw) {
   else if (server) { L = server; persist(); ui.msg = `Selamat datang, ${name}. Data dimuat: ${L.entries.length} transaksi, ${L.wallets.length} dompet.`; }
   else { L = defaultLedger(); persist(); ui.msg = `Buku catatan baru dibuat untuk "${name}". Klik Tambah untuk mencatat transaksi pertama.`; }
   ui.locked = !!pinRec(); if (!ui.locked) reminder();
-  Sync.etag = null; Sync.at = null; Sync.err = ''; if (syncCfg()) setTimeout(syncNow, 0);
+  syncStop(); if (syncCfg()) { setTimeout(syncNow, 0); Users.fileId(name).then(syncLive); }
 }
-function logout() { USER = null; L = null; ui.locked = false; ui.menu = null; ui.msg = ''; ui.tx.search = ''; if (dlg().open) dlg().close(); }
+function logout() { syncStop(); USER = null; L = null; ui.locked = false; ui.menu = null; ui.msg = ''; ui.tx.search = ''; if (dlg().open) dlg().close(); }
 function reminder() {
   if (ls.get('weeklyMail') === '1' && L.entries.length) { const last = Number(ls.get('lastMail') || 0); if (Date.now() - last > 7 * 864e5 && !ui.msg) ui.msg = 'Sudah lebih dari seminggu sejak backup ke Gmail. Buka Backup & pengaturan → Kirim backup ke Gmail.'; }
 }
@@ -1018,11 +1025,8 @@ function vSettings() {
     ${sect('Keamanan', '🔒', `<p style="margin:0 0 10px">${pinRec() ? 'PIN aktif. Halaman terkunci saat dibuka dan saat tab disembunyikan.' : 'PIN belum diaktifkan.'}</p>
       ${USER === OWNER ? '<p class="muted small" style="margin:0">PIN akun ini tetap dan berlaku di semua perangkat.</p>' : `<div class="row"><input type="password" id="pin1" inputmode="numeric" placeholder="PIN baru (6–12 angka)" class="grow"><input type="password" id="pin2" inputmode="numeric" placeholder="Ulangi PIN" class="grow"><button class="btn" data-a="pinset">Aktifkan / ubah PIN</button>${pinRec() ? '<button class="btn" data-a="pinoff">Nonaktifkan</button>' : ''}</div>`}
       <p class="muted small">PIN hanya mengunci tampilan di browser ini; data tidak dienkripsi. Touch ID hanya tersedia di aplikasi Mac.</p>`)}
-    ${sect('Sinkron antar perangkat', '☁️', syncCfg() ? `<p style="margin:0 0 10px"><b>Aktif.</b> Data akun ini tersinkron otomatis lewat GitHub <b>${SYNC_REPO}</b> (cabang ${SYNC_BRANCH}, terenkripsi). <span class="save-state">${saveText()}</span></p>
-      <div class="row"><button class="btn primary" data-a="syncnow">Sinkronkan sekarang</button><button class="btn" data-a="syncoff">Putuskan di perangkat ini</button></div>`
-      : `<p style="margin:0 0 10px">Hubungkan perangkat ini supaya transaksi dari HP, laptop, dan browser lain tersinkron otomatis (±15 detik).</p>
-      <ol class="small" style="margin:0 0 10px;padding-left:18px"><li>Buka <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → token baru (fine-grained)</a>.</li><li>Repository access: <b>Only select repositories</b> → <b>${SYNC_REPO.split('/')[1]}</b>.</li><li>Permissions → Repository → <b>Contents: Read and write</b>. Generate, lalu salin token.</li><li>Tempel token di bawah. Pakai token yang sama di setiap perangkat.</li></ol>
-      <div class="row"><input type="password" id="sync-token" placeholder="Token GitHub (github_pat_…)" class="grow" autocomplete="off"><button class="btn primary" data-a="syncon">Hubungkan</button></div>`)}
+    ${sect('Sinkron antar perangkat', '☁️', syncCfg() ? `<p style="margin:0 0 10px"><b>Otomatis aktif.</b> Setiap perubahan langsung tersimpan online dan muncul di perangkat lain yang login dengan nama pengguna yang sama (real time). <span class="save-state">${saveText()}</span></p>
+      <div class="row"><button class="btn primary" data-a="syncnow">Sinkronkan sekarang</button></div>` : '<p style="margin:0">Sinkron online belum dikonfigurasi.</p>')}
     ${sect('Backup lokal & ekspor', '💾', `
       <div class="row"><button class="btn" data-a="bsave">Simpan backup lengkap</button><button class="btn" data-a="bopen">Pulihkan backup…</button><button class="btn" data-a="csvall">Ekspor semua CSV</button></div>
       <div class="row" style="margin-top:10px"><button class="btn" data-a="csvopen">Impor CSV Saku.yuk…</button><button class="btn" data-a="xlsxopen">Impor Excel Sepran…</button>${hasServer ? '<button class="btn" data-a="server">Samakan dengan data server</button>' : ''}</div>
@@ -1032,7 +1036,7 @@ function vSettings() {
       <label class="chk" style="margin-top:10px"><input type="checkbox" data-a-change="weekly" ${ls.get('weeklyMail') === '1' ? 'checked' : ''}> Ingatkan saya mengirim backup ke Gmail setiap minggu</label>
       ${last ? `<p class="muted small">Backup email terakhir disiapkan: ${dateText(last, true)}</p>` : ''}
       <p class="muted small">Safari: pilih Mail/Gmail di menu Bagikan. Browser lain: berkas diunduh dan Gmail terbuka — lampirkan berkasnya lalu kirim.</p>`)}
-    ${sect('Tentang data', 'ℹ️', `<p style="margin:0">Pengguna <b>${esc(USER)}</b> · ${L.entries.length} transaksi · ${syncCfg() ? 'tersimpan di browser ini dan tersinkron ke GitHub.' : 'tersimpan di browser ini. Aktifkan Sinkron antar perangkat agar HP/laptop lain ikut ter-update.'}</p>`)}
+    ${sect('Tentang data', 'ℹ️', `<p style="margin:0">Pengguna <b>${esc(USER)}</b> · ${L.entries.length} transaksi · ${syncCfg() ? 'tersimpan di browser ini dan tersinkron online.' : 'tersimpan di browser ini. Aktifkan Sinkron antar perangkat agar HP/laptop lain ikut ter-update.'}</p>`)}
     <p class="muted small">Saku.yuk Web • versi ${BUILD} • Bukan produk resmi Sepran</p>`;
 }
 function gateView() {
@@ -1104,12 +1108,7 @@ function pickFile(accept, handler) { const i = document.createElement('input'); 
 const A = {
   nav: b => { ui.section = b.dataset.s; ui.menu = null; window.scrollTo(0, 0); },
   msgx: () => { ui.msg = ''; },
-  syncon: async () => { const t = $('#sync-token').value.trim(); if (!t) fail('Tempel token GitHub dulu.');
-    const r = await fetch(`https://api.github.com/repos/${SYNC_REPO}`, { cache: 'no-store', headers: { Authorization: 'Bearer ' + t, Accept: 'application/vnd.github+json' } });
-    if (!r.ok) fail(r.status === 401 ? 'Token tidak valid atau kedaluwarsa.' : r.status === 404 ? `Token belum diberi akses ke repo ${SYNC_REPO}.` : 'GitHub menolak: ' + r.status);
-    ls.set('sync', JSON.stringify({ token: t })); Sync.etag = null; Sync.err = ''; ui.msg = 'Sinkron diaktifkan. Menyamakan data…'; await syncNow(); if (!Sync.err) ui.msg = 'Sinkron aktif. Data perangkat ini sudah sama dengan server.'; },
-  syncoff: () => { ls.del('sync'); ls.del('syncbase'); Sync.etag = null; Sync.at = null; Sync.err = ''; ui.msg = 'Sinkron diputus di perangkat ini. Data lokal tetap ada.'; },
-  syncnow: async () => { Sync.etag = null; await syncNow(); ui.msg = Sync.err ? '' : 'Sudah tersinkron.'; }, new: () => entryDialog(null), more: () => { ui.tx.limit += 300; },
+  syncnow: async () => { Sync.rev = null; await syncNow(); ui.msg = Sync.err ? '' : 'Sudah tersinkron.'; }, new: () => entryDialog(null), more: () => { ui.tx.limit += 300; },
   lock: () => { ui.locked = true; },
   menu: b => { ui.menu = ui.menu === b.dataset.id ? null : b.dataset.id; },
   edit: b => { ui.menu = null; entryDialog(L.entries.find(e => e.id === b.dataset.id)); },
@@ -1214,51 +1213,49 @@ window.addEventListener('storage', ev => {
   if (!USER || ev.key !== lk(KEY) || !ev.newValue) return;
   try { const l = JSON.parse(ev.newValue); validate(l); L = l; savedAt = new Date(); if (!ui.locked && !dlg().open) render(); } catch {}
 });
-// ---------- sync between devices (private GitHub repo, one encrypted file per user) ----------
-const SYNC_REPO = 'liemyo/saku', SYNC_BRANCH = 'sync'; // own branch so saves don't rebuild GitHub Pages (main)
-const Sync = { busy: false, again: false, at: null, err: '', etag: null, timer: null };
-function syncCfg() { try { return JSON.parse(ls.get('sync') || 'null'); } catch { return null; } }
+// ---------- sync between devices (Supabase; one encrypted row per user, realtime broadcast + 15s check) ----------
+const SB_URL = 'https://bbptcxpzzvgpxqylkrmw.supabase.co', SB_KEY = 'sb_publishable_Ny-WHCEZ3WmcLFsPBx9QeQ_9xgo7MxR'; // Supabase project URL + anon (public) key
+const Sync = { busy: false, again: false, at: null, err: '', rev: null, ch: null, timer: null };
+function syncCfg() { return !!(SB_URL && SB_KEY); }
 function showSync() { document.querySelectorAll('.save-state').forEach(el => { el.textContent = saveText(); }); }
-function syncSoon() { if (!syncCfg()) return; clearTimeout(Sync.timer); Sync.timer = setTimeout(syncNow, 800); showSync(); }
-async function syncApi(user, method, body, extra = {}) {
-  const path = `https://api.github.com/repos/${SYNC_REPO}/contents/sync/${await Users.fileId(user)}.json` + (method === 'GET' ? '?ref=' + SYNC_BRANCH : '');
-  if (body) body.branch = SYNC_BRANCH;
-  return fetch(path, { method, cache: 'no-store', headers: { Authorization: 'Bearer ' + syncCfg().token, Accept: 'application/vnd.github+json', ...extra }, body: body && JSON.stringify(body) });
+function syncSoon() { if (!syncCfg()) return; clearTimeout(Sync.timer); Sync.timer = setTimeout(syncNow, 300); showSync(); }
+async function rpc(fn, args) {
+  const r = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, { method: 'POST', cache: 'no-store', headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+  if (!r.ok) throw new Error(navigator.onLine ? 'server ' + r.status : 'offline'); return r.json();
 }
-async function syncBranch() {
-  const h = { Authorization: 'Bearer ' + syncCfg().token, Accept: 'application/vnd.github+json' }, api = `https://api.github.com/repos/${SYNC_REPO}/git`;
-  if ((await fetch(`${api}/ref/heads/${SYNC_BRANCH}`, { cache: 'no-store', headers: h })).ok) return;
-  const main = await fetch(`${api}/ref/heads/main`, { cache: 'no-store', headers: h }); if (!main.ok) throw new Error(syncErr(main.status));
-  const c = await fetch(`${api}/refs`, { method: 'POST', headers: h, body: JSON.stringify({ ref: 'refs/heads/' + SYNC_BRANCH, sha: (await main.json()).object.sha }) });
-  if (!c.ok && c.status !== 422) throw new Error(syncErr(c.status));
+let sbClient = null;
+async function syncLive(id) {
+  try {
+    if (!window.supabase) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+    sbClient ||= window.supabase.createClient(SB_URL, SB_KEY);
+    if (Sync.ch) sbClient.removeChannel(Sync.ch);
+    Sync.ch = sbClient.channel('saku-' + id).on('broadcast', { event: 'rev' }, ({ payload }) => { if (payload?.rev !== Sync.rev) syncNow(); }).subscribe();
+  } catch {} // realtime is a bonus; the 15s check still syncs
 }
-const syncErr = st => st === 401 ? 'token tidak valid/kedaluwarsa' : st === 403 || st === 404 ? 'token tanpa akses ke repo' : 'GitHub ' + st;
+function syncStop() { if (Sync.ch && sbClient) sbClient.removeChannel(Sync.ch); Sync.ch = null; Sync.rev = null; Sync.at = null; Sync.err = ''; }
 async function syncNow() {
   if (!USER || !L || loadFailed || !syncCfg()) return;
   if (Sync.busy) { Sync.again = true; return; }
   const user = USER; Sync.busy = true; showSync(); let changed = false;
   try {
+    const id = await Users.fileId(user);
     for (let tries = 0; tries < 4; tries++) {
       const dirty = JSON.stringify(L) !== ls.get('syncbase');
-      const r = await syncApi(user, 'GET', null, Sync.etag && !dirty ? { 'If-None-Match': Sync.etag } : {});
-      if (r.status === 304) break;
-      let remote = null, sha;
-      if (r.ok) { const j = await r.json(); sha = j.sha; Sync.etag = r.headers.get('ETag');
-        remote = JSON.parse(await Users.decrypt(user, atob(j.content.replace(/\s/g, '')))); validate(remote); }
-      else if (r.status === 404) await syncBranch(); else throw new Error(syncErr(r.status));
+      if (!dirty && Sync.rev !== null && await rpc('book_rev', { p_id: id }) === Sync.rev) break;
+      const row = (await rpc('book_get', { p_id: id }))[0]; let remote = null;
+      if (row) { remote = JSON.parse(await Users.decrypt(user, row.data)); validate(remote); }
       if (USER !== user) return;
       let base = null; try { base = JSON.parse(ls.get('syncbase') || 'null'); } catch {}
       if (!base) try { base = await serverLedger(true); } catch {}
       let merged = remote ? merge3(base, L, remote) : L; try { validate(merged); } catch { merged = L; }
-      const text = JSON.stringify(merged);
+      const text = JSON.stringify(merged); let rev = row ? row.rev : 0;
       if (text !== JSON.stringify(L)) { L = merged; persist(); changed = true; }
       if (!remote || text !== JSON.stringify(remote)) {
-        const put = await syncApi(user, 'PUT', { message: `Saku.yuk ${user} ${new Date().toISOString()}`, content: btoa(await Users.encrypt(user, text)), ...(sha ? { sha } : {}) }, { 'Content-Type': 'application/json' });
-        if (put.status === 409 || put.status === 422) { Sync.etag = null; continue; }
-        if (!put.ok) throw new Error(syncErr(put.status));
-        Sync.etag = null;
+        const nr = await rpc('book_put', { p_id: id, p_data: await Users.encrypt(user, text), p_rev: rev });
+        if (nr === -1) continue; // someone saved in between: fetch and merge again
+        rev = nr; Sync.ch?.send({ type: 'broadcast', event: 'rev', payload: { rev } });
       }
-      ls.set('syncbase', text); break;
+      Sync.rev = rev; ls.set('syncbase', text); break;
     }
     Sync.at = new Date(); Sync.err = '';
   } catch (e) { Sync.err = e?.message || String(e); }
