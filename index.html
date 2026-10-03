@@ -543,6 +543,85 @@ function reportXLSX(l, rep, title, opts = { cats: true, tx: true }) {
   return XLSX.build(sheets);
 }
 
+// Minimal PDF writer (A4, Helvetica, WinAnsi) — produces a real downloadable .pdf without libraries.
+const PDF = {
+  HW: [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584],
+  WIN: { 0x2013: 0x96, 0x2014: 0x97, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94, 0x2022: 0x95, 0x2026: 0x85, 0x20ac: 0x80, 0x2212: 0x2d },
+  codes(str) { const out = []; for (const ch of String(str ?? '')) { const c = ch.codePointAt(0); if (c >= 32 && c < 127) out.push(c); else if (c >= 160 && c < 256) out.push(c); else if (PDF.WIN[c]) out.push(PDF.WIN[c]); else if (c === 9 || c === 10 || c === 13) out.push(32); else out.push(63); } return out; },
+  cw(c, bold) { const w = c >= 32 && c < 127 ? PDF.HW[c - 32] : c === 0x97 ? 1000 : c === 0x95 ? 350 : 556; return bold && !(c >= 48 && c <= 57) ? w * 1.06 : w; },
+  width(str, size, bold) { return PDF.codes(str).reduce((a, c) => a + PDF.cw(c, bold), 0) * size / 1000; },
+  fit(str, size, max, bold) { str = String(str ?? ''); if (PDF.width(str, size, bold) <= max) return str; let s = str; while (s.length && PDF.width(s + '…', size, bold) > max) s = s.slice(0, -1); return s + '…'; },
+  doc() {
+    const W = 595.28, H = 841.89; const pages = []; let cur = null;
+    const col = c => c.map(v => (v / 255).toFixed(3)).join(' ');
+    const d = {
+      W, H, get page() { return pages.length; },
+      add() { cur = []; pages.push(cur); return d; },
+      text(x, y, str, size = 10, o = {}) { const cs = PDF.codes(str); const w = PDF.width(str, size, o.bold); if (o.align === 'right') x -= w; else if (o.align === 'center') x -= w / 2;
+        const lit = cs.map(c => c === 40 || c === 41 || c === 92 ? '\\' + String.fromCharCode(c) : c > 126 ? '\\' + c.toString(8).padStart(3, '0') : String.fromCharCode(c)).join('');
+        cur.push(`BT /${o.bold ? 'F2' : 'F1'} ${size} Tf ${col(o.color || [0, 0, 0])} rg ${x.toFixed(2)} ${(H - y).toFixed(2)} Td (${lit}) Tj ET`); },
+      rect(x, y, w, h, fill) { cur.push(`${col(fill)} rg ${x.toFixed(2)} ${(H - y - h).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re f`); },
+      box(x, y, w, h, stroke, lw = 0.6) { cur.push(`${col(stroke)} RG ${lw} w ${x.toFixed(2)} ${(H - y - h).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`); },
+      line(x1, y1, x2, y2, stroke = [200, 200, 200], lw = 0.5) { cur.push(`${col(stroke)} RG ${lw} w ${x1.toFixed(2)} ${(H - y1).toFixed(2)} m ${x2.toFixed(2)} ${(H - y2).toFixed(2)} l S`); },
+      eachPage(fn) { const keep = cur; pages.forEach((p, i) => { cur = p; fn(i + 1, pages.length); }); cur = keep; },
+      build() {
+        const objs = []; const add = s => { objs.push(s); return objs.length; };
+        add('<< /Type /Catalog /Pages 2 0 R >>'); add(''); add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'); add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+        const kids = [];
+        for (const p of pages) { const stream = p.join('\n'); const c = add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+          kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${c} 0 R >>`)); }
+        objs[1] = `<< /Type /Pages /Kids [${kids.map(k => k + ' 0 R').join(' ')}] /Count ${kids.length} >>`;
+        let out = '%PDF-1.4\n%\xe2\xe3\xcf\xd3\n'; const offs = [];
+        objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+        const xref = out.length; out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+        out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+        const u8 = new Uint8Array(out.length); for (let i = 0; i < out.length; i++) u8[i] = out.charCodeAt(i) & 255; return u8;
+      }
+    };
+    return d.add();
+  }
+};
+function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
+  const d = PDF.doc(); const M = 40, R = d.W - M, GRAY = [90, 90, 90], LINE = [205, 205, 205], HEAD = [236, 240, 238], ACC = [26, 133, 102], RED = [190, 50, 50];
+  let y = M;
+  const range = `${dateText(rep.start)} – ${dateText(addDays(rep.end, -1))}`;
+  d.text(M, y + 18, 'Laporan Keuangan', 20, { bold: true }); y += 28;
+  d.text(M, y + 10, `${user} · ${title} (${range}) · dicetak ${dateText(new Date(), true)}`, 9.5, { color: GRAY }); y += 24;
+  const boxes = [['Pemasukan', money(rep.income), ACC], ['Pengeluaran', money(rep.expense), RED], ['Selisih', money(rep.income - rep.expense), [0, 0, 0]], ['Transaksi', String(rep.entries.length), [0, 0, 0]]];
+  const bw = (R - M - 3 * 8) / 4;
+  boxes.forEach(([k, v, c], i) => { const x = M + i * (bw + 8); d.box(x, y, bw, 44, LINE); d.text(x + 8, y + 15, k, 8.5, { color: GRAY }); d.text(x + 8, y + 34, PDF.fit(v, 12.5, bw - 14, true), 12.5, { bold: true, color: c }); });
+  y += 60;
+  const need = h => { if (y + h > d.H - M - 14) { d.add(); y = M; return true; } return false; };
+  const table = (cols, rows, o = {}) => {
+    const size = o.size || 9, rh = size + 7.5;
+    const head = () => { d.rect(M, y, R - M, rh, HEAD); let x = M; cols.forEach(c => { d.text(c.align === 'right' ? x + c.w - 5 : x + 5, y + rh - 5.5, c.t, size, { bold: true, align: c.align }); x += c.w; }); y += rh; };
+    head();
+    for (const r of rows) {
+      if (need(rh)) head();
+      let x = M; cols.forEach((c, i) => { const v = r.cells[i] ?? ''; d.text(c.align === 'right' ? x + c.w - 5 : x + 5, y + rh - 5.5, PDF.fit(v, size, c.w - 10, r.bold), size, { bold: r.bold, align: c.align, color: r.colors?.[i] }); x += c.w; });
+      if (r.bold) d.line(M, y, R, y, [0, 0, 0], 0.9); y += rh; d.line(M, y, R, y, LINE, 0.4);
+    }
+  };
+  const flex = (fixed) => R - M - fixed;
+  if (opts.cats) {
+    need(60); d.text(M, y + 12, 'Pengeluaran per kategori', 12.5, { bold: true }); y += 20;
+    table([{ t: 'Kategori', w: flex(230) }, { t: 'Transaksi', w: 70, align: 'right' }, { t: 'Total', w: 105, align: 'right' }, { t: '%', w: 55, align: 'right' }],
+      [...rep.cats.map(c => ({ cells: [c.name, String(c.count), money(c.total), (c.total / Math.max(1, rep.expense) * 100).toFixed(1).replace('.', ',') + '%'] })),
+       { bold: true, cells: ['Total', String(rep.cats.reduce((a, c) => a + c.count, 0)), money(rep.expense), rep.expense ? '100%' : ''] }]);
+    y += 16;
+    if (rep.incCats.length) { need(60); d.text(M, y + 12, 'Pemasukan per kategori', 12.5, { bold: true }); y += 20;
+      table([{ t: 'Kategori', w: flex(175) }, { t: 'Transaksi', w: 70, align: 'right' }, { t: 'Total', w: 105, align: 'right' }], rep.incCats.map(c => ({ cells: [c.name, String(c.count), money(c.total)] }))); y += 16; }
+  }
+  if (opts.tx) {
+    need(60); d.text(M, y + 12, 'Rincian transaksi', 12.5, { bold: true }); y += 20;
+    table([{ t: 'Tanggal', w: 66 }, { t: 'Catatan', w: flex(66 + 105 + 80 + 80) }, { t: 'Kategori', w: 105 }, { t: 'Pemasukan', w: 80, align: 'right' }, { t: 'Pengeluaran', w: 80, align: 'right' }],
+      [...rep.entries.map(e => ({ cells: [dateText(e.date), e.note || '', e.category ? categoryName(l, e.category) : '—', e.kind === 'Pemasukan' ? money(e.amount) : '', e.kind === 'Pengeluaran' ? money(e.amount) : ''] })),
+       { bold: true, cells: ['Total', '', '', money(rep.income), money(rep.expense)] }], { size: 8.5 });
+  }
+  d.eachPage((i, n) => { d.line(M, d.H - 28, R, d.H - 28, LINE, 0.4); d.text(M, d.H - 16, `SakuMac · ${user}`, 8, { color: GRAY }); d.text(R, d.H - 16, `Halaman ${i} / ${n}`, 8, { color: GRAY, align: 'right' }); });
+  return d.build();
+}
+
 
 // SakuMac Web — UI
 const KEY = 'ledger', PREV = 'before-change', LEGACY = 'sakumac.ledger.v1', OWNER = 'liemyo25';
@@ -825,7 +904,7 @@ function vPrint() {
     <div class="card" style="margin-top:16px"><div class="card-h"><b>Isi laporan</b></div>
       <label class="chk"><input type="checkbox" data-bind="pr.cats" ${p.cats ? 'checked' : ''}> Ringkasan per kategori</label><br>
       <label class="chk" style="margin-top:8px"><input type="checkbox" data-bind="pr.tx" ${p.tx ? 'checked' : ''}> Rincian semua transaksi</label>
-      <div class="row" style="margin-top:18px"><button class="btn primary big" data-a="prpdf" ${r.entries.length ? '' : 'disabled'}>🖨 Cetak / Simpan PDF</button><button class="btn big" data-a="prxlsx" ${r.entries.length ? '' : 'disabled'}>⬇ Unduh Excel</button></div>
+      <div class="row" style="margin-top:18px"><button class="btn primary big" data-a="prpdf" ${r.entries.length ? '' : 'disabled'}>⬇ Unduh PDF</button><button class="btn big" data-a="prxlsx" ${r.entries.length ? '' : 'disabled'}>⬇ Unduh Excel</button><button class="btn" data-a="prprint" ${r.entries.length ? '' : 'disabled'}>🖨 Cetak ke printer</button></div>
       ${r.entries.length ? '' : '<p class="muted">Tidak ada transaksi pada periode ini.</p>'}</div>
     ${r.cats.length ? `<div class="card" style="margin-top:16px"><div class="card-h"><b>Pratinjau per kategori</b></div>${r.cats.map(c => `<button class="catrow" data-a="detail" data-what="pr-cat" data-k="${c.key}"><div class="l"><span>${esc(c.name)}</span><span class="muted small">${c.count}×</span><span class="grow"></span><span class="num">${money(c.total)}</span><span class="chev">›</span></div></button>`).join('')}</div>` : ''}`;
 }
@@ -941,7 +1020,9 @@ const A = {
   rprev: () => { ui.rep.month = addMonths(ui.rep.month, -1); }, rnext: () => { ui.rep.month = addMonths(ui.rep.month, 1); }, rthis: () => { ui.rep.month = monthStart(new Date()); },
   detail: b => { ui.menu = null; showDetail(detailFor(b)); throw null; },
   prp: b => { ui.pr.period = b.dataset.v; },
-  prpdf: () => { $('#print-area').innerHTML = printHTML(); document.title = `Laporan ${USER} ${printTitle()}`; setTimeout(() => { window.print(); document.title = 'SakuMac'; }, 60); throw null; },
+  prpdf: () => { const [s] = printBounds(); const name = `Laporan-${USER}-${ymd(s)}.pdf`; const bytes = reportPDF(L, printReport(), printTitle(), USER, ui.pr);
+    download(name, bytes, 'application/pdf'); ui.msg = `File PDF "${name}" diunduh (cek folder Unduhan / Downloads).`; },
+  prprint: () => { $('#print-area').innerHTML = printHTML(); window.print(); throw null; },
   prxlsx: () => { const [s] = printBounds(); download(`Laporan-${USER}-${ymd(s)}.xlsx`, reportXLSX(L, printReport(), `Laporan Keuangan ${USER} — ${printTitle()}`, ui.pr), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); ui.msg = 'File Excel diunduh.'; },
   pinset: async () => { const a = $('#pin1').value, b = $('#pin2').value; if (!/^\d{6,12}$/.test(a)) fail('PIN harus 6–12 angka.'); if (a !== b) fail('Konfirmasi PIN tidak sama.');
     const salt = uuid(); ls.set('pin', JSON.stringify({ salt, hash: await hashPin(a, salt) })); ui.msg = 'PIN tersimpan di browser ini.'; },
