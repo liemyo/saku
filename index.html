@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SakuMac — Catatan Keuangan untuk Mac</title>
+<meta name="description" content="SakuMac: aplikasi catatan keuangan pribadi native macOS. Impor data Sepran, laporan per kategori dan per bulan, backup ke Gmail.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%231a8566'/><path d='M30 62c0-20 16-34 40-34-2 24-16 40-34 40l-6 6' fill='none' stroke='white' stroke-width='7' stroke-linecap='round'/></svg>">
+<style>
+:root{--bg:#f6f7f5;--card:#ffffff;--ink:#16201c;--muted:#5d6a64;--line:#e2e6e3;--accent:#1a8566;--accent-ink:#ffffff;--soft:#e7f3ee;--code:#eef1ef}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111513;--card:#1a201d;--ink:#e9efec;--muted:#9aa8a1;--line:#2a332f;--accent:#2fa47f;--accent-ink:#06130e;--soft:#16302a;--code:#222a26}}
+:root[data-theme="dark"]{--bg:#111513;--card:#1a201d;--ink:#e9efec;--muted:#9aa8a1;--line:#2a332f;--accent:#2fa47f;--accent-ink:#06130e;--soft:#16302a;--code:#222a26}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+header{padding:56px 0 28px}
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;font-size:20px}
+.logo{width:40px;height:40px;border-radius:50%;background:var(--accent);display:grid;place-items:center}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.15;margin:28px 0 12px;letter-spacing:-.02em}
+.lead{font-size:clamp(17px,2.2vw,20px);color:var(--muted);max-width:680px;margin:0}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin:28px 0 8px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:12px;font-weight:600;text-decoration:none;border:1px solid var(--line);color:var(--ink);background:var(--card)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:hover{filter:brightness(1.05)}
+.meta{color:var(--muted);font-size:14px}
+.shot{margin:32px 0 8px;border-radius:16px;overflow:hidden;border:1px solid var(--line);box-shadow:0 20px 50px rgba(0,0,0,.12)}
+.shot img{display:block;width:100%;height:auto}
+section{padding:36px 0;border-top:1px solid var(--line)}
+h2{font-size:26px;margin:0 0 18px;letter-spacing:-.01em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px}
+.card h3{margin:0 0 6px;font-size:17px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+ol{padding-left:22px;margin:0}
+ol li{margin:8px 0}
+code,pre{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);border-radius:8px}
+code{padding:2px 6px}
+pre{padding:12px 14px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:10px 0}
+.note{background:var(--soft);border-radius:12px;padding:14px 16px;font-size:15px}
+footer{padding:28px 0 48px;color:var(--muted);font-size:14px;border-top:1px solid var(--line)}
+.hash{word-break:break-all}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="brand"><span class="logo"><svg width="22" height="22" viewBox="0 0 100 100"><path d="M18 70c0-30 22-50 62-50-4 36-24 58-52 58l-10 10" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/></svg></span>SakuMac</div>
+  <h1>Catatan keuangan pribadi,<br>native untuk Mac.</h1>
+  <p class="lead">Catat pemasukan, pengeluaran, transfer, dan utang/piutang. Lihat pengeluaran per kategori dan per bulan, impor data dari Sepran, lalu backup ke Gmail.</p>
+  <div class="cta">
+    <a class="btn primary" href="SakuMac-app.zip" download>⬇ Unduh SakuMac 0.1 (ZIP, 0,7 MB)</a>
+    <a class="btn" href="SakuMac-source.zip" download>Source code (Swift)</a>
+  </div>
+  <div class="meta">macOS 14 Sonoma atau lebih baru · Apple Silicon (M1/M2/M3/M4) · Bahasa Indonesia · Gratis</div>
+  <div class="shot"><img src="tampilan.jpg" alt="Tampilan SakuMac: ringkasan saldo, dompet, dan transaksi terbaru" width="1600" height="1095" loading="lazy"></div>
+</header>
+
+<section>
+  <h2>Fitur</h2>
+  <div class="grid">
+    <div class="card"><h3>Dompet &amp; transaksi</h3><p>Pemasukan, pengeluaran, dan transfer antar-dompet dengan saldo awal. Cari, filter, edit, dan ulangi transaksi.</p></div>
+    <div class="card"><h3>Pengeluaran per kategori</h3><p>Grafik donat dan daftar total, jumlah transaksi, serta persentase per kategori. Klik kategori untuk melihat tren dan transaksinya.</p></div>
+    <div class="card"><h3>Bulanan atau rentang waktu</h3><p>Pindah bulan dengan ◀ ▶, atau pilih rentang bebas: 3/6/12 bulan, tahun ini, tahun lalu, semua data.</p></div>
+    <div class="card"><h3>Pengeluaran per bulan</h3><p>Grafik batang dengan rata-rata, plus tabel per bulan: total, perubahan vs bulan lalu, dan kategori terbesar.</p></div>
+    <div class="card"><h3>Impor dari Sepran</h3><p>Baca Excel ekspor Sepran. Impor ulang hanya menambah transaksi baru; transaksi yang sudah Anda edit tidak tertimpa.</p></div>
+    <div class="card"><h3>Backup ke Gmail</h3><p>Kirim backup lengkap sebagai lampiran email ke Gmail dengan satu klik, plus pengingat mingguan. Pulihkan kapan saja.</p></div>
+    <div class="card"><h3>Utang &amp; piutang</h3><p>Catat pokok dan jatuh tempo. Pembayaran otomatis membuat transaksi dan memperbarui saldo.</p></div>
+    <div class="card"><h3>Ekspor &amp; keamanan</h3><p>Ekspor CSV (Excel) dan PDF. Kunci aplikasi dengan PIN atau Touch ID.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Cara memasang</h2>
+  <ol>
+    <li>Unduh <b>SakuMac-app.zip</b>, lalu klik dua kali untuk mengekstrak.</li>
+    <li>Pindahkan <b>SakuMac.app</b> ke folder <b>Applications</b>.</li>
+    <li>Saat dibuka pertama kali, macOS akan memperingatkan karena aplikasi ini belum dinotarisasi Apple. Buka <b>Pengaturan Sistem → Privasi &amp; Keamanan</b>, gulir ke bawah, lalu klik <b>Tetap Buka</b> (Open Anyway) untuk SakuMac.</li>
+    <li>Alternatif lewat Terminal:
+      <pre>xattr -dr com.apple.quarantine /Applications/SakuMac.app</pre></li>
+  </ol>
+  <p class="note">SakuMac ditandatangani ad-hoc, bukan dengan Developer ID Apple. Periksa keaslian berkas dengan SHA-256 di bawah sebelum membukanya.</p>
+</section>
+
+<section>
+  <h2>Memindahkan data dari Sepran</h2>
+  <ol>
+    <li>Di Sepran: buka <b>Laporan</b>, pilih rentang tanggal dari transaksi pertama sampai hari ini, lalu ketuk ikon <b>unduh</b> (Excel).</li>
+    <li>Di SakuMac: <b>Backup &amp; pengaturan → Impor Excel Sepran…</b>, lalu pilih berkas <code>.xlsx</code> tersebut.</li>
+    <li>Transaksi masuk ke dompet <b>Sepran</b> dengan kategori yang sama. Atur saldo awal dompet di menu <b>Dompet</b>.</li>
+  </ol>
+  <p class="note">Ekspor Excel Sepran tidak memuat nama dompet, saldo awal, transfer, maupun utang/piutang. SakuMac tidak bisa mengirim data balik ke Sepran. SakuMac bukan produk resmi Sepran.</p>
+</section>
+
+<section>
+  <h2>Data keuangan saya</h2>
+  <p>Seluruh data keuangan yang sudah ada di SakuMac: <b>1.653 transaksi</b> (1 Mei 2024 – 3 Okt 2026), 3 dompet, 33 kategori, total pengeluaran <b>Rp506.558.457</b>.</p>
+  <div class="cta">
+    <a class="btn primary" href="SakuMac-backup.json" download>⬇ Backup lengkap SakuMac (JSON, 0,5 MB)</a>
+    <a class="btn" href="Sepran-ekspor.xlsx" download>Excel asli dari Sepran (.xlsx)</a>
+  </div>
+  <ol>
+    <li>Pasang SakuMac (lihat di atas), lalu buka <b>Backup &amp; pengaturan → Pulihkan backup…</b>.</li>
+    <li>Pilih <b>SakuMac-backup.json</b>, periksa pratinjau, lalu klik <b>Ganti data dengan backup</b>.</li>
+    <li>Atau impor Excel Sepran lewat <b>Impor Excel Sepran…</b>.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Privasi</h2>
+  <p>Aplikasi menyimpan data di Mac (<code>~/Library/Application Support/SakuMac</code>), tanpa server, akun, atau pelacakan. Data hanya keluar dari Mac saat Anda sendiri mengirim backup ke Gmail atau Google Drive. Catatan: berkas backup di halaman ini bersifat publik dan dapat diunduh siapa pun. Berkas data dan backup tidak dienkripsi oleh aplikasi; aktifkan FileVault untuk perlindungan disk.</p>
+</section>
+
+<footer>
+  SakuMac 0.1 · arm64 · macOS 14+<br>
+  SHA-256 SakuMac-app.zip: <span class="hash" id="sha">718e98ac6c5c29189a4aae12c94a1e8360d0676328f8ca8c4d5d16ab3b5411aa</span>
+</footer>
+</div>
+</body>
+</html>
