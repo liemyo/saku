@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Saku.yuk</title>
-<meta name="description" content="Saku.yuk versi web: catatan keuangan pribadi — dompet, transaksi, kategori, utang/piutang, laporan per kategori & per bulan, impor Sepran, backup ke Gmail.">
+<title>Saku</title>
+<meta name="description" content="Saku versi web: catatan keuangan pribadi — dompet, transaksi, kategori, utang/piutang, laporan per kategori & per bulan, impor Sepran, backup ke Gmail.">
 <meta name="theme-color" content="#1a8566">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%231a8566'/><path d='M28 66c0-22 16-36 42-36-3 26-18 42-38 42l-7 7' fill='none' stroke='white' stroke-width='8' stroke-linecap='round'/></svg>">
 <style>:root{color-scheme:light;--bg:#f5f6f4;--side:#eceeeb;--card:#ffffff;--card2:#f3f5f3;--ink:#0b1310;--muted:#3d4a44;--line:#e1e5e2;--accent:#1a8566;--accent-soft:rgba(26,133,102,.1);--accent-ink:#fff;--red:#d64545;--red-soft:rgba(214,69,69,.09);--input:#fff;--shadow:0 1px 2px rgba(0,0,0,.05)}
@@ -248,11 +248,11 @@ nav .ns{display:none}
 </style>
 </head>
 <body>
-<div id="app"><div style="padding:40px;font-family:sans-serif;color:#888">Memuat Saku.yuk…</div></div>
+<div id="app"><div style="padding:40px;font-family:sans-serif;color:#888">Memuat Saku…</div></div>
 <dialog id="dlg"></dialog>
 <div id="print-area"></div>
-<noscript>Saku.yuk memerlukan JavaScript.</noscript>
-<script>// Saku.yuk Web — core logic (no DOM). Same data format as the Saku.yuk Mac app (ledger.json / backup JSON).
+<noscript>Saku memerlukan JavaScript.</noscript>
+<script>// Saku Web — core logic (no DOM). Same data format as the Saku Mac app (ledger.json / backup JSON).
 const KINDS = ['Pengeluaran', 'Pemasukan', 'Transfer'];
 const MAX = 1e15;
 const uuid = () => crypto.randomUUID().toUpperCase();
@@ -294,7 +294,7 @@ function defaultLedger() {
 }
 
 function validate(l) {
-  if (!l || l.format !== 'SakuMac' || l.version !== 1) fail('Format backup belum didukung. Gunakan backup Saku.yuk (JSON).');
+  if (!l || l.format !== 'SakuMac' || l.version !== 1) fail('Format backup belum didukung. Gunakan backup Saku (JSON).');
   for (const k of ['wallets', 'categories', 'entries', 'debts']) if (!Array.isArray(l[k])) fail('Backup tidak valid.');
   if (!l.wallets.length || !(l.cycleDay >= 1 && l.cycleDay <= 28) || l.entries.length >= 1e6) fail('Backup tidak valid.');
   const uniq = a => new Set(a.map(x => x.id)).size === a.length;
@@ -363,7 +363,7 @@ const Reports = {
   }
 };
 
-// CSV (same schema as Saku.yuk)
+// CSV (same schema as Saku)
 const CSV = {
   header: ['id', 'date', 'type', 'amount', 'wallet', 'destination', 'category', 'note'],
   quote: s => '"' + String(s).replace(/"/g, '""') + '"',
@@ -384,7 +384,7 @@ const CSV = {
   },
   importing(text, original) {
     const rows = CSV.parse(text.replace(/^﻿/, ''));
-    if (!rows.length || rows[0].join(',') !== CSV.header.join(',')) fail('Skema CSV belum dikenali. Gunakan CSV ekspor Saku.yuk.');
+    if (!rows.length || rows[0].join(',') !== CSV.header.join(',')) fail('Skema CSV belum dikenali. Gunakan CSV ekspor Saku.');
     const l = clone(original); let count = 0;
     const wallet = name => { if (!name) fail('Nama dompet kosong.'); let w = l.wallets.find(x => x.name === name); if (!w) { w = { id: uuid(), name, opening: 0 }; l.wallets.push(w); } return w.id; };
     rows.slice(1).forEach((r, i) => {
@@ -660,7 +660,7 @@ function reportPDF(l, rep, title, user, opts = { cats: true, tx: true }) {
       [...rep.entries.map(e => ({ cells: [dateText(e.date), e.note || '', e.category ? categoryName(l, e.category) : '—', e.kind === 'Pemasukan' ? money(e.amount) : '', e.kind === 'Pengeluaran' ? money(e.amount) : ''] })),
        { bold: true, cells: ['Total', '', '', money(rep.income), money(rep.expense)] }], { size: 8.5 });
   }
-  d.eachPage((i, n) => { d.line(M, d.H - 28, R, d.H - 28, LINE, 0.4); d.text(M, d.H - 16, `Saku.yuk · ${user}`, 8, { color: GRAY }); d.text(R, d.H - 16, `Halaman ${i} / ${n}`, 8, { color: GRAY, align: 'right' }); });
+  d.eachPage((i, n) => { d.line(M, d.H - 28, R, d.H - 28, LINE, 0.4); d.text(M, d.H - 16, `Saku · ${user}`, 8, { color: GRAY }); d.text(R, d.H - 16, `Halaman ${i} / ${n}`, 8, { color: GRAY, align: 'right' }); });
   return d.build();
 }
 
@@ -686,8 +686,8 @@ function merge3(base, a, b) {
 }
 
 
-// Saku.yuk Web — UI
-const BUILD = '20261003-224210';
+// Saku Web — UI
+const BUILD = '20261005-065405';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -770,7 +770,7 @@ function reminder() {
 function applyTheme() { const t = ls.get('appearance') || 'Sistem'; if (t === 'Gelap') document.documentElement.dataset.theme = 'dark'; else if (t === 'Terang') document.documentElement.dataset.theme = 'light'; else delete document.documentElement.dataset.theme; }
 function download(name, data, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
 const backupJSON = () => JSON.stringify(L, null, 2);
-const backupName = () => `Saku.yuk-backup-${ymd(new Date())}.json`;
+const backupName = () => `Saku-backup-${ymd(new Date())}.json`;
 
 // ---------- render ----------
 function render() {
@@ -778,7 +778,7 @@ function render() {
   if (!USER) { $('#app').innerHTML = gateView(); syncMask(); setTimeout(() => ($('#pin-in') || $('#user-in'))?.focus(), 30); return; }
   $('#app').innerHTML = `<div class="app">
     <aside>
-      <div class="brand">${LOGO}<div><b>Saku.yuk</b><small>Catatan keuangan pribadi</small></div></div>
+      <div class="brand">${LOGO}<div><b>Saku</b><small>Catatan keuangan pribadi</small></div></div>
       <nav>${SECTIONS.map(([s, i]) => `<button data-a="nav" data-s="${s}" class="${ui.section === s ? 'on' : ''}">${icon(i)}<span class="nl">${s}</span><span class="ns">${s === 'Backup & pengaturan' ? 'Pengaturan' : s}</span></button>`).join('')}</nav>
       <div class="side-foot"><div class="user-chip"><span class="avatar">${esc(USER[0].toUpperCase())}</span><span class="grow">${esc(USER)}</span><button class="icon-btn" data-a="logout" title="Keluar">Keluar</button></div><div style="margin-top:8px" class="save-state">${saveText()}</div></div>
     </aside>
@@ -1023,27 +1023,27 @@ function vSettings() {
   const app = ls.get('appearance') || 'Sistem'; const last = Number(ls.get('lastMail') || 0);
   return `${sect('Kategori', '🏷', `${vCategories()}`)}
     ${sect('Tampilan', '🎨', `<select data-a-change="theme" aria-label="Tampilan">${['Sistem', 'Terang', 'Gelap'].map(t => opt(t, t, app === t)).join('')}</select>`)}
-    ${sect('PIN masuk', '🔒', `<p style="margin:0 0 10px">${Auth.hasPin ? '✓ PIN aktif — diminta setiap kali membuka Saku.yuk di perangkat baru / sesi baru.' : 'Belum ada PIN. Pasang PIN agar buku catatan tidak bisa dibuka hanya dengan nama pengguna.'} PIN ini <b>sama dengan PIN Planner &amp; Notes</b>.</p>
+    ${sect('PIN masuk', '🔒', `<p style="margin:0 0 10px">${Auth.hasPin ? '✓ PIN aktif — diminta setiap kali membuka Saku di perangkat baru / sesi baru.' : 'Belum ada PIN. Pasang PIN agar buku catatan tidak bisa dibuka hanya dengan nama pengguna.'} PIN ini <b>sama dengan PIN Planner &amp; Notes</b>.</p>
       <div class="row">${Auth.hasPin ? '<input type="password" id="pin-old" inputmode="numeric" maxlength="12" placeholder="PIN saat ini" autocomplete="off" class="grow">' : ''}<input type="password" id="pin1" inputmode="numeric" maxlength="12" placeholder="PIN baru (4–12 angka)" autocomplete="new-password" class="grow"><input type="password" id="pin2" inputmode="numeric" maxlength="12" placeholder="Ulangi PIN baru" autocomplete="new-password" class="grow"></div>
       <div class="row" style="margin-top:10px"><button class="btn primary" data-a="pinset">${Auth.hasPin ? 'Ubah PIN' : 'Pasang PIN'}</button>${Auth.hasPin ? '<button class="btn" data-a="pinoff">Hapus PIN</button>' : ''}</div>`)}
     ${sect('Sinkron antar perangkat', '☁️', syncCfg() ? `<p style="margin:0 0 10px"><b>Otomatis aktif.</b> Setiap perubahan langsung tersimpan online dan muncul di perangkat lain yang login dengan nama pengguna yang sama (real time). <span class="save-state">${saveText()}</span></p>
       <div class="row"><button class="btn primary" data-a="syncnow">Sinkronkan sekarang</button></div>` : '<p style="margin:0">Sinkron online belum dikonfigurasi.</p>')}
     ${sect('Backup lokal & ekspor', '💾', `
       <div class="row"><button class="btn" data-a="bsave">Simpan backup lengkap</button><button class="btn" data-a="bopen">Pulihkan backup…</button><button class="btn" data-a="csvall">Ekspor semua CSV</button></div>
-      <div class="row" style="margin-top:10px"><button class="btn" data-a="csvopen">Impor CSV Saku.yuk…</button><button class="btn" data-a="xlsxopen">Impor Excel Sepran…</button>${hasServer ? '<button class="btn" data-a="server">Samakan dengan data server</button>' : ''}</div>
-      <p class="muted small">Format backup sama dengan aplikasi Saku.yuk di Mac.</p>`)}
+      <div class="row" style="margin-top:10px"><button class="btn" data-a="csvopen">Impor CSV Saku…</button><button class="btn" data-a="xlsxopen">Impor Excel Sepran…</button>${hasServer ? '<button class="btn" data-a="server">Samakan dengan data server</button>' : ''}</div>
+      <p class="muted small">Format backup sama dengan aplikasi Saku di Mac.</p>`)}
     ${sect('Backup ke Gmail', '✉️', `<p class="muted" style="margin:0 0 10px">Kirim berkas backup lengkap ke alamat Gmail Anda.</p>
       <div class="row"><input type="text" id="gmail" placeholder="Alamat Gmail Anda" value="${esc(ls.get('gmail') || '')}" style="width:300px"><button class="btn primary" data-a="mail">Kirim backup ke Gmail</button></div>
       <label class="chk" style="margin-top:10px"><input type="checkbox" data-a-change="weekly" ${ls.get('weeklyMail') === '1' ? 'checked' : ''}> Ingatkan saya mengirim backup ke Gmail setiap minggu</label>
       ${last ? `<p class="muted small">Backup email terakhir disiapkan: ${dateText(last, true)}</p>` : ''}
       <p class="muted small">Safari: pilih Mail/Gmail di menu Bagikan. Browser lain: berkas diunduh dan Gmail terbuka — lampirkan berkasnya lalu kirim.</p>`)}
     ${sect('Tentang data', 'ℹ️', `<p style="margin:0">Pengguna <b>${esc(USER)}</b> · ${L.entries.length} transaksi · ${syncCfg() ? 'tersimpan di browser ini dan tersinkron online.' : 'tersimpan di browser ini. Aktifkan Sinkron antar perangkat agar HP/laptop lain ikut ter-update.'}</p>`)}
-    <p class="muted small">Saku.yuk Web • versi ${BUILD} • Bukan produk resmi Sepran</p>`;
+    <p class="muted small">Saku Web • versi ${BUILD} • Bukan produk resmi Sepran</p>`;
 }
 function gateView() {
   const logo = LOGO.replace('width="20" height="20"', 'width="38" height="38"').replace('class="logo"', 'class="logo gate-logo"');
   if (GATE) { const n = GATE.name; return `<div class="gate"><div class="gate-glow"></div><form class="gate-card" id="gate-form" autocomplete="off">
-    ${logo}<h1>Saku.yuk</h1><p class="gate-sub">🔒 ${esc(n.slice(0, 4) + '*'.repeat(Math.max(0, n.length - 4)))}</p>
+    ${logo}<h1>Saku</h1><p class="gate-sub">🔒 ${esc(n.slice(0, 4) + '*'.repeat(Math.max(0, n.length - 4)))}</p>
     <label class="gate-field"><span>🔑</span><input id="pin-in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" placeholder="PIN" autocomplete="off"></label>
     <label class="gate-check"><input type="checkbox" id="remember" checked> Tetap masuk di perangkat ini</label>
     <button class="btn primary gate-btn" type="submit">Masuk</button>
@@ -1051,7 +1051,7 @@ function gateView() {
     <p class="gate-note"><a href="#" data-a="gateback" style="color:#fff">← Ganti nama pengguna</a></p>
   </form></div>`; }
   return `<div class="gate"><div class="gate-glow"></div><form class="gate-card" id="gate-form" autocomplete="off">
-    ${logo}<h1>Saku.yuk</h1><p class="gate-sub">Catatan keuangan pribadi</p>
+    ${logo}<h1>Saku</h1><p class="gate-sub">Catatan keuangan pribadi</p>
     <label class="gate-field"><span>👤</span><span class="mask-wrap"><input id="user-in" name="user" type="text" placeholder="Nama pengguna" autocapitalize="none" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="32" required><span id="user-mask" aria-hidden="true"></span></span></label>
     <label class="gate-check"><input type="checkbox" id="remember" checked> Tetap masuk di perangkat ini</label>
     <button class="btn primary gate-btn" type="submit">Masuk</button>
@@ -1192,20 +1192,20 @@ const A = {
   prprint: () => { $('#print-area').innerHTML = printHTML(); window.print(); throw null; },
   prxlsx: () => { download(printFileName('xlsx'), reportXLSX(L, printReport(), `Laporan Keuangan ${USER} — ${printFullTitle()}`, { ...ui.pr, min: Number(ui.pr.min) }), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); ui.msg = 'File Excel diunduh.'; },
   pinset: async () => { const old = $('#pin-old')?.value || '', a = $('#pin1').value, b = $('#pin2').value; if (!/^\d{4,12}$/.test(a)) fail(PIN_MSG.format); if (a !== b) fail('Ulangi PIN tidak sama.'); await pinChange(old, a); },
-  pinoff: async () => { const old = $('#pin-old')?.value || ''; if (!old) fail('Isi PIN saat ini untuk menghapus PIN.'); if (!confirm('Hapus PIN? Siapa pun yang tahu nama pengguna ini bisa membuka Saku.yuk, Planner dan Notes-nya.')) throw null; await pinChange(old, ''); },
+  pinoff: async () => { const old = $('#pin-old')?.value || ''; if (!old) fail('Isi PIN saat ini untuk menghapus PIN.'); if (!confirm('Hapus PIN? Siapa pun yang tahu nama pengguna ini bisa membuka Saku, Planner dan Notes-nya.')) throw null; await pinChange(old, ''); },
   gateback: () => { GATE = null; Auth.d('session'); },
   logout: () => logout(),
   dprev: () => { ui.day = addDays(ui.day, -1); }, dnext: () => { ui.day = addDays(ui.day, 1); }, dtoday: () => { ui.day = startOfDay(new Date()); },
   openday: b => { ui.day = new Date(Number(b.dataset.d)); ui.section = 'Transaksi'; window.scrollTo(0, 0); },
   bsave: () => download(backupName(), backupJSON(), 'application/json'),
   bopen: () => pickFile('.json,application/json', async f => { let l; try { l = JSON.parse(await f.text()); } catch { fail('Berkas backup tidak dapat dibaca.'); } previewRestore(l, `Backup "${f.name}"`); }),
-  csvall: () => download('Saku.yuk-transaksi.csv', '﻿' + CSV.export(L, L.entries), 'text/csv'),
+  csvall: () => download('Saku-transaksi.csv', '﻿' + CSV.export(L, L.entries), 'text/csv'),
   csvopen: () => pickFile('.csv,text/csv,text/plain', async f => { const [l, n] = CSV.importing(await f.text(), L); commit(l); ui.msg = `${n} transaksi ditambahkan. Duplikat identik dilewati.`; }),
   xlsxopen: () => pickFile('.xlsx', async f => { const rows = Sepran.rows(await Sepran.grid(await f.arrayBuffer())); const [l, n, s] = await Sepran.importing(rows, L); commit(l); ui.msg = `Sepran: ${n} transaksi baru ditambahkan ke dompet "Sepran", ${s} sudah ada dilewati.`; }),
   server: async () => { const l = await serverLedger(); previewRestore(l, `Data server "${USER}"`); },
   mail: async () => {
     const addr = $('#gmail').value.trim(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) fail('Masukkan alamat Gmail yang valid.'); ls.set('gmail', addr);
-    const day = ymd(new Date()); const subject = `Backup Saku.yuk ${day}`; const body = `Backup Saku.yuk ${day}: ${L.entries.length} transaksi, ${L.wallets.length} dompet. Pulihkan lewat Saku.yuk → Backup & pengaturan → Pulihkan backup….`;
+    const day = ymd(new Date()); const subject = `Backup Saku ${day}`; const body = `Backup Saku ${day}: ${L.entries.length} transaksi, ${L.wallets.length} dompet. Pulihkan lewat Saku → Backup & pengaturan → Pulihkan backup….`;
     const file = new File([backupJSON()], backupName(), { type: 'application/json' }); ls.set('lastMail', String(Date.now()));
     if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: subject, text: body }); ui.msg = 'Backup dibagikan. Pastikan email terkirim ke ' + addr + '.'; return; } catch (e) { if (e.name === 'AbortError') { ui.msg = 'Berbagi dibatalkan.'; return; } } }
     download(file.name, file, 'application/json');
