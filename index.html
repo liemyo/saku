@@ -288,8 +288,8 @@ class AppError extends Error {}
 const fail = m => { throw new AppError(m); };
 
 function parseAmount(text) {
-  const s = String(text ?? '').trim();
-  if (!/^\d+$/.test(s) || Number(s) > MAX) fail('Masukkan nominal Rupiah bulat tanpa titik/koma, maksimal 1 kuadriliun.');
+  const s = String(text ?? '').trim().replace(/[.\s]/g, '');
+  if (!/^\d+$/.test(s) || Number(s) > MAX) fail('Masukkan nominal Rupiah bulat (tanpa koma), maksimal 1 kuadriliun.');
   return Number(s);
 }
 
@@ -718,7 +718,7 @@ function merge3(base, a, b) {
 
 
 // Saku Web — UI
-const BUILD = '20261005-070404';
+const BUILD = '20261009-120216';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -990,16 +990,16 @@ function planDialog(p) {
   const t = new Date(), m = ui.est.month; const def = m > monthStart(t) ? m : t;
   const cats = L.categories.filter(c => !c.income);
   openDialog(`<h3>${p ? 'Edit rencana' : 'Tambah rencana pengeluaran'}</h3><p class="muted small" style="margin-top:0">Hanya untuk estimasi — tidak masuk ke laporan keuangan asli.</p>
-    <div class="form"><label>Nominal</label><input name="amount" inputmode="numeric" placeholder="Rupiah tanpa pemisah" value="${esc(p ? p.amount : '')}">
+    <div class="form"><label>Nominal</label><input name="amount" class="money-in" inputmode="numeric" autocomplete="off" placeholder="mis. 10.000" value="${esc(fmtNum(p ? p.amount : ''))}">
     <label>Tanggal</label><input name="date" type="date" value="${dateInput(p ? p.date : def)}">
-    <label>Kategori</label><select name="category">${opt('', 'Tanpa kategori')}${cats.map(c => opt(c.id, c.name, p?.category === c.id)).join('')}</select>
+    <label>Kategori</label>${catInput(cats, p?.category ? categoryName(L, p.category) : '')}
     <label>Keterangan</label><input name="note" placeholder="mis. Cicilan motor, listrik, sekolah" value="${esc(p?.note || '')}"></div>
     ${p ? '<div class="row" style="margin-top:14px"><button class="btn" value="copy">Simpan &amp; salin ke bulan berikutnya</button><button class="btn danger" value="del" formnovalidate>Hapus rencana</button></div>' : ''}${dlgButtons()}`,
   (fd, how) => {
     const n = JSON.parse(JSON.stringify(L)); n.plans = n.plans || [];
     if (how === 'del') { if (!confirm('Hapus rencana ini?')) throw new Error('Batal menghapus.'); n.plans = n.plans.filter(x => x.id !== p.id); commit(n); ui.msg = 'Rencana dihapus.'; return; }
     const amount = parseAmount(fd.get('amount')); const ds = fd.get('date'); if (!ds) fail('Isi tanggal rencana.'); const d0 = fromDateInput(ds);
-    const x = { id: p?.id || uuid(), date: iso(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate(), 12)), amount, note: String(fd.get('note') || '').trim() }; if (fd.get('category')) x.category = fd.get('category');
+    const x = { id: p?.id || uuid(), date: iso(new Date(d0.getFullYear(), d0.getMonth(), d0.getDate(), 12)), amount, note: String(fd.get('note') || '').trim() }; const cid = resolveCat(n, fd.get('catname'), false); if (cid) x.category = cid;
     const i = n.plans.findIndex(y => y.id === x.id); if (i >= 0) n.plans[i] = x; else n.plans.push(x);
     if (how === 'copy') { const nm = addMonths(monthStart(d0), 1); const last = new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate();
       n.plans.push({ ...x, id: uuid(), date: iso(new Date(nm.getFullYear(), nm.getMonth(), Math.min(d0.getDate(), last), 12)) }); ui.msg = `Rencana disalin ke ${monthName(nm)}.`; }
@@ -1210,6 +1210,18 @@ function openDialog(html, onSubmit) {
   $('#dlg-form').onsubmit = async ev => { ev.preventDefault(); if (ev.submitter?.value === 'cancel') return d.close(); try { await onSubmit(new FormData(ev.target), ev.submitter?.value); d.close(); render(); } catch (e) { $('#dlg-err').textContent = e.message; } };
   setTimeout(() => d.querySelector('input:not([type=hidden]),select')?.focus(), 30);
 }
+const fmtNum = x => { const d = String(x ?? '').replace(/\D/g, '').replace(/^0+(?=\d)/, ''); return d.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); };
+function catInput(cats, value) {
+  const names = [...new Set(cats.map(c => c.name))].sort((a, b) => a.localeCompare(b, 'id'));
+  return `<input name="catname" list="cat-list" autocomplete="off" placeholder="Ketik atau pilih kategori (kosong = tanpa kategori)" value="${esc(value)}"><datalist id="cat-list">${names.map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>`;
+}
+// find a category by name (case/space-insensitive) in ledger n, or add it; returns id or '' when blank
+function resolveCat(n, name, income) {
+  const nm = String(name || '').trim().replace(/\s+/g, ' '); if (!nm) return ''; if (nm.length > 60) fail('Nama kategori terlalu panjang.');
+  const k = nm.toLowerCase(); let c = n.categories.find(x => x.income === income && x.name.trim().toLowerCase() === k);
+  if (!c) { c = { id: uuid(), income, name: nm }; n.categories.push(c); }
+  return c.id;
+}
 const dlgButtons = (ok = 'Simpan') => `<div class="actions"><button class="btn" value="cancel" formnovalidate>Batal</button><button class="btn primary" value="ok">${ok}</button></div>`;
 function defaultEntryDate() {
   const t = new Date(); const at = d => new Date(d.getFullYear(), d.getMonth(), d.getDate(), t.getHours(), t.getMinutes());
@@ -1221,22 +1233,22 @@ function entryDialog(existing, after) {
   let kind = existing?.kind || 'Pengeluaran'; const kinds = kind === 'Transfer' ? KINDS : ['Pengeluaran', 'Pemasukan']; const when = existing ? existing.date : defaultEntryDate();
   let first = true;
   const draw = () => {
-    const cats = L.categories.filter(c => c.income === (kind === 'Pemasukan')); const f = first ? null : $('#dlg-form'); first = false; const keep = f ? Object.fromEntries(new FormData(f)) : {};
+    const cats = L.categories.filter(c => c.income === (kind === 'Pemasukan')); const f = first ? null : $('#dlg-form'); first = false; const keep = f ? Object.fromEntries(new FormData(f)) : {}; if (keep.kind !== kind) delete keep.catname;
     const v = (k, d) => keep[k] ?? d;
     return `<h3>${existing ? 'Edit / ulangi transaksi' : 'Tambah transaksi'}</h3><div class="seg" style="margin-bottom:16px">${kinds.map(k => `<button type="button" data-kind="${k}" class="${k === kind ? 'on' : ''}">${k}</button>`).join('')}</div>
-      <div class="form"><label>Nominal</label><input name="amount" inputmode="numeric" placeholder="Rupiah tanpa pemisah" value="${esc(v('amount', existing ? existing.amount : ''))}">
+      <div class="form"><input type="hidden" name="kind" value="${kind}"><label>Nominal</label><input name="amount" class="money-in" inputmode="numeric" autocomplete="off" placeholder="mis. 10.000" value="${esc(fmtNum(v('amount', existing ? existing.amount : '')))}">
       <label>Tanggal dan waktu</label><input name="date" type="datetime-local" value="${esc(v('date', dtInput(when)))}">
       ${kind === 'Transfer' ? `<label>Dompet</label><select name="wallet">${L.wallets.map(w => opt(w.id, w.name, v('wallet', existing?.wallet) === w.id)).join('')}</select>` : `<input type="hidden" name="wallet" value="${esc(existing?.wallet || defaultWallet())}">`}
       ${kind === 'Transfer' ? `<label>Dompet tujuan</label><select name="destination">${opt('', 'Pilih dompet')}${L.wallets.map(w => opt(w.id, w.name, v('destination', existing?.destination) === w.id)).join('')}</select>`
-        : `<label>Kategori</label><select name="category">${opt('', 'Tanpa kategori')}${cats.map(c => opt(c.id, c.name, v('category', existing?.category) === c.id)).join('')}</select>`}
+        : `<label>Kategori</label>${catInput(cats, v('catname', existing?.category && existing.kind === kind ? categoryName(L, existing.category) : ''))}`}
       <label>Catatan</label><input name="note" value="${esc(v('note', existing?.note || ''))}"></div>${dlgButtons()}`;
   };
   openDialog(draw(), fd => {
     const w = fd.get('wallet'); const amount = parseAmount(fd.get('amount')); const d = new Date(fd.get('date')); if (isNaN(d)) fail('Tanggal tidak valid.');
     const e = { id: existing?.id || uuid(), date: iso(d), kind, amount, wallet: w, note: String(fd.get('note') || '') };
     if (kind === 'Transfer') { const dest = fd.get('destination'); if (!dest) fail('Pilih dompet tujuan.'); if (dest === w) fail('Dompet tujuan harus berbeda.'); e.destination = dest; }
-    else if (fd.get('category')) e.category = fd.get('category');
-    commit(upsert(L, e)); if (ui.section === 'Transaksi') ui.day = startOfDay(d); const m = ui.msg = (existing ? 'Perubahan' : 'Transaksi') + ' tersimpan otomatis.'; setTimeout(() => { if (ui.msg === m) { ui.msg = ''; $('.msg')?.remove(); } }, 3000);
+    let base = L; if (kind !== 'Transfer' && String(fd.get('catname') || '').trim()) { base = JSON.parse(JSON.stringify(L)); const cid = resolveCat(base, fd.get('catname'), kind === 'Pemasukan'); if (cid) e.category = cid; }
+    commit(upsert(base, e)); if (ui.section === 'Transaksi') ui.day = startOfDay(d); const m = ui.msg = (existing ? 'Perubahan' : 'Transaksi') + ' tersimpan otomatis.'; setTimeout(() => { if (ui.msg === m) { ui.msg = ''; $('.msg')?.remove(); } }, 3000);
     if (after) setTimeout(() => { after(); render(); showDetail(ui._detail); }, 0);
   });
   dlg().onclick = ev => { const b = ev.target.closest('[data-kind]'); if (!b) return; kind = b.dataset.kind; const f = $('#dlg-form'); const html = draw(); f.innerHTML = html + '<div class="err" id="dlg-err"></div>'; };
@@ -1321,6 +1333,9 @@ document.addEventListener('change', ev => { const el = ev.target; if (el.dataset
 // Login field: first 4 characters visible, the rest shown as * (the real value stays in the input).
 function syncMask() { const i = $('#user-in'), m = $('#user-mask'); if (!i || !m) return; const v = i.value; m.textContent = v.slice(0, 4) + '*'.repeat(Math.max(0, v.length - 4)); m.scrollLeft = i.scrollLeft; }
 ['input', 'keyup', 'select', 'scroll', 'focus'].forEach(t => document.addEventListener(t, ev => { if (ev.target?.id === 'user-in') syncMask(); }, true));
+document.addEventListener('input', ev => { const el = ev.target; if (!el.classList?.contains('money-in')) return;
+  const pos = el.selectionStart ?? el.value.length; const before = el.value.slice(0, pos).replace(/\D/g, '').length; const f = fmtNum(el.value); if (f === el.value) return;
+  el.value = f; let i = 0, n = 0; while (i < f.length && n < before) { if (/\d/.test(f[i])) n++; i++; } try { el.setSelectionRange(i, i); } catch {} });
 document.addEventListener('input', ev => { const el = ev.target; if (el.dataset.bind && (el.type === 'text' || el.type === 'search')) bind(el); });
 document.addEventListener('keydown', ev => {
   if (USER && !ui.locked && ui.section === 'Transaksi' && !dlg().open && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '') && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) { run(ev.key === 'ArrowLeft' ? A.dprev : A.dnext); return; } if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches?.('.metric.click')) { ev.preventDefault(); ev.target.click(); } if (ev.key === 'Escape' && ui.menu) { ui.menu = null; render(); } });
