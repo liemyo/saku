@@ -252,6 +252,15 @@ nav .ns{display:none}
 .est-line{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 2px;border-bottom:1px solid var(--line)}.est-line:last-child{border-bottom:0}
 .est-line small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
 .drow.plan.gone{opacity:.6}
+
+.cat-combo{display:flex;flex-wrap:wrap;min-width:0}
+.cat-combo input{flex:1 1 0;width:auto!important;border-top-right-radius:0!important;border-bottom-right-radius:0!important}
+.cat-dd{flex:none;width:40px;border:1px solid var(--line);border-left:0;background:var(--card2);color:var(--ink);border-radius:0 7px 7px 0;cursor:pointer;font-size:15px}
+.cat-dd:hover,.cat-combo.open .cat-dd{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.cat-menu{flex:0 0 100%;margin-top:4px;background:var(--card);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 28px rgba(0,0,0,.22);padding:4px;z-index:30;max-height:240px;overflow:auto}
+.cat-menu button{display:block;width:100%;text-align:left;border:0;background:none;color:var(--ink);padding:9px 10px;border-radius:6px;cursor:pointer;font:inherit}
+.cat-menu button:hover,.cat-menu button.on{background:var(--accent-soft)}
+.cat-menu button[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -718,7 +727,7 @@ function merge3(base, a, b) {
 
 
 // Saku Web — UI
-const BUILD = '20261009-120216';
+const BUILD = '20261013-110934';
 // Phones keep old copies of the page in cache; when a newer build is online, load it (only on the login screen, so nothing is lost).
 async function checkUpdate() {
   try { const r = await fetch(location.pathname + '?_=' + Date.now(), { cache: 'no-store' }); const m = /const BUILD = '([^']+)'/.exec(await r.text());
@@ -1213,8 +1222,25 @@ function openDialog(html, onSubmit) {
 const fmtNum = x => { const d = String(x ?? '').replace(/\D/g, '').replace(/^0+(?=\d)/, ''); return d.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); };
 function catInput(cats, value) {
   const names = [...new Set(cats.map(c => c.name))].sort((a, b) => a.localeCompare(b, 'id'));
-  return `<input name="catname" list="cat-list" autocomplete="off" placeholder="Ketik atau pilih kategori (kosong = tanpa kategori)" value="${esc(value)}"><datalist id="cat-list">${names.map(n => `<option value="${esc(n)}"></option>`).join('')}</datalist>`;
+  return `<div class="cat-combo"><input name="catname" autocomplete="off" placeholder="Ketik atau pilih kategori (kosong = tanpa kategori)" value="${esc(value)}"><button type="button" class="cat-dd" data-catdd aria-label="Tampilkan daftar kategori" title="Daftar kategori">▾</button>
+    <div class="cat-menu" hidden>${names.length ? names.map(n => `<button type="button" data-catpick="${esc(n)}">${esc(n)}</button>`).join('') : '<div class="muted small" style="padding:8px 10px">Belum ada kategori — ketik nama baru.</div>'}<div class="cat-none muted small" hidden style="padding:8px 10px">Tidak ada yang cocok — akan dibuat kategori baru.</div></div></div>`;
 }
+// category dropdown: ▾ toggles the full list, typing filters it, clicking an item fills the field
+function catMenu(combo, show, filter) {
+  const m = combo?.querySelector('.cat-menu'); if (!m) return; m.hidden = !show; combo.classList.toggle('open', show); if (!show) return;
+  const q = String(filter || '').trim().toLowerCase(); let n = 0;
+  m.querySelectorAll('[data-catpick]').forEach(b => { const ok = !q || b.dataset.catpick.toLowerCase().includes(q); b.hidden = !ok; if (ok) n++; b.classList.toggle('on', b.dataset.catpick.toLowerCase() === q); });
+  const none = m.querySelector('.cat-none'); if (none) none.hidden = n > 0 || !m.querySelector('[data-catpick]');
+  m.querySelector('[data-catpick].on')?.scrollIntoView({ block: 'nearest' });
+}
+document.addEventListener('click', ev => {
+  const dd = ev.target.closest('[data-catdd]'), pick = ev.target.closest('[data-catpick]');
+  document.querySelectorAll('.cat-combo.open').forEach(c => { if (!c.contains(ev.target)) catMenu(c, false); });
+  if (dd) { const c = dd.closest('.cat-combo'); const open = !c.classList.contains('open'); catMenu(c, open, ''); if (open) c.querySelector('input').focus(); }
+  else if (pick) { const c = pick.closest('.cat-combo'); c.querySelector('input').value = pick.dataset.catpick; catMenu(c, false); }
+}, true);
+document.addEventListener('input', ev => { if (ev.target.name === 'catname') { const c = ev.target.closest('.cat-combo'); catMenu(c, true, ev.target.value); } });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && ev.target.name === 'catname') { const c = ev.target.closest('.cat-combo'); if (c?.classList.contains('open')) { ev.preventDefault(); ev.stopPropagation(); catMenu(c, false); } } }, true);
 // find a category by name (case/space-insensitive) in ledger n, or add it; returns id or '' when blank
 function resolveCat(n, name, income) {
   const nm = String(name || '').trim().replace(/\s+/g, ' '); if (!nm) return ''; if (nm.length > 60) fail('Nama kategori terlalu panjang.');
